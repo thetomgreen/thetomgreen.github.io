@@ -5,11 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Download Song Sheets</title>
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Redirect after a delay to allow form submission
+    function monitorFormSubmission() {
+      const iframe = document.getElementById('formframe');
+      iframe.onload = function () {
+        setTimeout(() => {
+          window.location.href = 'downloads-success.html';
+        }, 1500); // wait 1.5 seconds to ensure form submission
+      };
+    }
+    window.onload = monitorFormSubmission;
+  </script>
 </head>
 <body>
   <main>
     <h1>Enter Your Email to Access Downloads</h1>
-    <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSdCMKmREXoBVjDEWZnOaMI5KitR6jNvwQ4TXegPjSjJdIi4hQ/viewform?embedded=true"
+    <iframe id="formframe" src="https://docs.google.com/forms/d/e/1FAIpQLSdCMKmREXoBVjDEWZnOaMI5KitR6jNvwQ4TXegPjSjJdIi4hQ/viewform?embedded=true"
             width="640" height="800" frameborder="0" marginheight="0" marginwidth="0">Loading…</iframe>
   </main>
 </body>
