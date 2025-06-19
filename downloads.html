@@ -5,14 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Download Song Sheets</title>
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    iframe {
+      display: block;
+      max-width: 100%;
+      border: none;
+    }
+    .continue-button {
+      display: inline-block;
+      margin-top: 1rem;
+      padding: 0.75rem 1.5rem;
+      background-color: #e91e63;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+    }
+  </style>
 </head>
 <body>
   <main>
     <h1>Enter Your Email to Access Downloads</h1>
     <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSdCMKmREXoBVjDEWZnOaMI5KitR6jNvwQ4TXegPjSjJdIi4hQ/viewform?embedded=true"
-            width="640" height="800" frameborder="0" marginheight="0" marginwidth="0">Loading…</iframe>
-    <p style="margin-top: 1.5rem;">After submitting your email, click the button below to access the downloads:</p>
-    <a href="downloads-success.html" style="display:inline-block; margin-top:1rem; padding:0.75rem 1.5rem; background-color:#e91e63; color:white; text-decoration:none; border-radius:6px;">Continue to Downloads</a>
+            width="640" height="900" frameborder="0" marginheight="0" marginwidth="0">Loading…</iframe>
+    <p style="margin-top: 1rem;">After submitting your email, click the button below to access the downloads:</p>
+    <a href="downloads-success.html" class="continue-button">Continue to Downloads</a>
   </main>
 </body>
 </html>
