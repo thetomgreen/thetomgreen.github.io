@@ -1,20 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Contact Us</title>
-  <link rel="stylesheet" href="styles.css">
+  <style>
+    body {
+      background-color: #f9f9f9;
+      font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+      padding: 2rem;
+      color: #333;
+    }
+    main {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2rem;
+      color: #9d174d;
+      margin-bottom: 1.5rem;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+    }
+    label {
+      margin: 0.5rem 0 0.25rem;
+    }
+    input, textarea {
+      padding: 0.5rem;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      background-color: #9d174d;
+      color: white;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #7a103d;
+    }
+    .footer {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #555;
+      margin-top: 2rem;
+    }
+  </style>
 </head>
 <body>
   <main>
-    <h1>Contact The Love Drops</h1>
-    <form action="mailto:thetomgreen@gmail.com" method="POST" enctype="text/plain">
-      <input type="text" name="name" placeholder="Your name" required />
-      <input type="email" name="email" placeholder="Your email" required />
-      <textarea name="message" placeholder="Your message" required></textarea>
-      <button type="submit">Send</button>
+    <h1>Contact Us</h1>
+    <form action="https://formspree.io/f/mgvyloko" method="POST">
+      <label for="name">Your Name</label>
+      <input type="text" id="name" name="name" required />
+
+      <label for="email">Your Email</label>
+      <input type="email" id="email" name="_replyto" required />
+
+      <label for="message">Your Message</label>
+      <textarea id="message" name="message" rows="6" required></textarea>
+
+      <button type="submit">Send Message</button>
     </form>
+
+    <div class="footer">
+      <p>The Love Drops Songs © 2025 by The Love Drops is licensed under 
+        <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">
+        Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International</a>.
+      </p>
+    </div>
   </main>
 </body>
 </html>
