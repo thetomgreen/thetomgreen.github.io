@@ -52,14 +52,20 @@
       color: #555;
       margin-top: 2rem;
     }
+    .status {
+      margin-top: 1rem;
+      font-size: 1rem;
+      color: green;
+    }
+    .error {
+      color: red;
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>Contact Us</h1>
-    <form action="https://formspree.io/f/mgvyloko" method="POST">
-      <input type="hidden" name="_redirect" value="https://thetomgreen.github.io/index.html" />
-
+    <form id="contact-form">
       <label for="name">Your Name</label>
       <input type="text" id="name" name="name" required />
 
@@ -70,6 +76,7 @@
       <textarea id="message" name="message" rows="6" required></textarea>
 
       <button type="submit">Send Message</button>
+      <div class="status" id="status"></div>
     </form>
 
     <div class="footer">
@@ -79,5 +86,34 @@
       </p>
     </div>
   </main>
+  <script>
+    const form = document.getElementById('contact-form');
+    const status = document.getElementById('status');
+
+    form.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      const data = new FormData(form);
+      const endpoint = 'https://formspree.io/f/mgvyloko';
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          body: data,
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (response.ok) {
+          window.location.href = 'index.html';
+        } else {
+          const result = await response.json();
+          status.textContent = result.error || 'Oops! There was a problem.';
+          status.classList.add('error');
+        }
+      } catch (error) {
+        status.textContent = 'Oops! Something went wrong.';
+        status.classList.add('error');
+      }
+    });
+  </script>
 </body>
 </html>
