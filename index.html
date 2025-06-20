@@ -5,15 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>The Love Drops</title>
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    body {
+      background-color: #fef6f0;
+      color: #333;
+      font-family: 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      padding: 2rem;
+    }
+    header {
+      text-align: center;
+    }
+    header img {
+      width: 250px;
+      max-width: 100%;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 0.2rem;
+    }
+    h2 {
+      font-size: 1.8rem;
+      color: #b1225e;
+      margin-top: 2rem;
+    }
+    p, li {
+      font-size: 1.05rem;
+    }
+    ul {
+      margin: 0 0 1rem 1.5rem;
+    }
+    footer {
+      margin-top: 2rem;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #666;
+    }
+    .platforms a {
+      display: inline-block;
+      margin-right: 1rem;
+      text-decoration: none;
+      color: #b1225e;
+    }
+    .contact-link {
+      display: block;
+      text-align: center;
+      margin-top: 2rem;
+      font-size: 1.1rem;
+    }
+  </style>
 </head>
 <body>
   <header>
+    <img src="logo.jpeg" alt="The Love Drops logo" />
     <h1>The Love Drops</h1>
     <p><em>“Everyone’s in the Band”</em></p>
-    <nav>
-      <a href="downloads.html">Download Song Sheets</a>
-      <a href="contact.html">Contact Us</a>
-    </nav>
   </header>
   <main>
     <section>
@@ -38,26 +85,20 @@
     </section>
 
     <section>
-      <h2>Viewing on phone or tablet for performing</h2>
-      <p>If you want to get these songs onto your phone or tablet for performances, there’s a nice free app called LivePrompter2 which presents the songs nicely, scrolls them for you, etc.</p>
-      <p>The app looks for .txt files using a specific format called ChordPro.</p>
-      <p>You can download the .txt files, put them in your own DropBox account (a free account should be enough), and use those with LivePrompter2.</p>
-      <p><a href="#">DropBox folder with .txt files for LivePrompter2 use</a></p>
-    </section>
-
-    <section>
       <h2>Don’t be a Stranger 🙂</h2>
       <p>We’d always love to hear from you. Please don’t hesitate to be in touch. Shoot us an email through the contact form and/or follow ThirdEyeRoll on your favorite platform.</p>
-      <ul>
-        <li><a href="#">Instagram</a></li>
-        <li><a href="#">Soundcloud</a></li>
-        <li><a href="#">Spotify</a></li>
-        <li><a href="#">YouTube</a></li>
-      </ul>
+      <div class="platforms">
+        <a href="https://www.instagram.com/thirdeyeroll?igsh=MWgzNmtqMHYzYnBsZg%3D%3D&utm_source=qr">Instagram</a>
+        <a href="https://on.soundcloud.com/myznmh1VYL29S5HmTb">Soundcloud</a>
+        <a href="https://open.spotify.com/artist/16Uhc1I720KzCh3bDmLXRP?si=QPCEk1SYSxiLcp3GxnyXaA">Spotify</a>
+        <a href="https://youtube.com/@thirdeyeroll-music?si=np21CCMTNIEbWjr-">YouTube</a>
+      </div>
     </section>
 
+    <a href="contact.html" class="contact-link">Contact Us</a>
+
     <footer>
-      <p><small>The Love Drops Songs © 2025 by The Love Drops is licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International</a>.</small></p>
+      <p>The Love Drops Songs © 2025 by The Love Drops is licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International</a>.</p>
     </footer>
   </main>
 </body>
