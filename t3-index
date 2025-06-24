@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Love Drops</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body {
+      background: linear-gradient(to bottom right, #fff5f7, #f0faff);
+      color: #2d2d2d;
+      font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 2rem;
+    }
+    header {
+      text-align: center;
+    }
+    header img {
+      width: 240px;
+      max-width: 100%;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      font-size: 2.7rem;
+      margin-bottom: 0.3rem;
+    }
+    h2 {
+      font-size: 1.8rem;
+      color: #9d174d;
+      margin-top: 2rem;
+    }
+    p, li {
+      font-size: 1.05rem;
+    }
+    ul {
+      margin: 0 0 1rem 1.5rem;
+    }
+    footer {
+      margin-top: 2rem;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #555;
+    }
+    .platforms a {
+      display: block;
+      margin-bottom: 0.5rem;
+      text-decoration: none;
+      color: #7c3aed;
+      font-weight: 500;
+    }
+    .contact-link {
+      display: block;
+      text-align: center;
+      margin-top: 2.5rem;
+      font-size: 1.1rem;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .button {
+      display: inline-block;
+      background-color: #9d174d;
+      color: white;
+      padding: 0.75rem 1.5rem;
+      text-decoration: none;
+      font-weight: bold;
+      border-radius: 6px;
+      margin-top: 1rem;
+    }
+    .button:hover {
+      background-color: #7a103d;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="logo.jpeg" alt="The Love Drops logo" />
+    <h1>The Love Drops</h1>
+    <p><em>“Everyone’s in the Band”</em></p>
+  </header>
+  <main>
+    <section>
+      <h2>About</h2>
+      <p>The Love Drops is a music project. We rewrite and parody existing songs for our own amusement and that of others. It’s a singalong - we invite others to sing with us so everyone’s in the band! Some of our songs are written for specific events and others cover themes we enjoy covering. Sometimes we perform at parties and festivals.</p>
+      <p>We have never used AI to help write our songs. If we ever do, we’ll disclose that in the writers list which appears with each song.</p>
+      <p>This is an open project. If you like our songs, please use ‘em!</p>
+      <h2>Using our songs</h2>
+      <p>We’re delighted for others to use these songs. They are provided under a Creative Commons license which has the following conditions:</p>
+      <ul>
+        <li>They may be freely used and shared with others with attribution to The Love Drops.</li>
+        <li>Commercial use is prohibited.</li>
+        <li>Derivative works are permitted (encouraged, actually!), as long as these are shared under the same Creative Commons license.</li>
+      </ul>
+      <p><strong>We request</strong> (these are friendly requests, not conditions of use):</p>
+      <ul>
+        <li>If you use them, let us know, tell us how it went, and send pics / videos if you can</li>
+        <li>If you make derivative works, share them with us so we can all enjoy your improvements</li>
+        <li>If you write additional songs in a similar style, we’d love to have access to them</li>
+      </ul>
+      <p>If you want to use our songs, you’re welcome to download our song sheets or access the Google Docs. They’re not guaranteed to be 100% correct but they’re at least mostly right. We just ask for your name and email address so we can keep track of who’s interested in this project.</p>
+      <p><strong>Disclaimer:</strong> some (well, most) of our songs contain adult themes and language. They are not suitable for minors and some people may find them offensive. Proceed at your own risk.</p>
+      <p><em>By accessing these materials I confirm I am over 18.</em></p>
+      <p><a class="button" href="https://docs.google.com/forms/d/e/1FAIpQLSdCMKmREXoBVjDEWZnOaMI5KitR6jNvwQ4TXegPjSjJdIi4hQ/viewform" target="_blank">Access Our Songs</a>
+</p>
+    </section>
+
+    <section>
+      <h2>Don’t be a Stranger 🙂</h2>
+      <p>We’d always love to hear from you. Please don’t hesitate to be in touch. Shoot us an email through the contact form and/or follow us on your favorite platform, where we go by ThirdEyeRoll:</p>
+      <div class="platforms">
+        <a href="https://www.instagram.com/thirdeyeroll?igsh=MWgzNmtqMHYzYnBsZg%3D%3D&utm_source=qr" target="_blank">Instagram</a>
+        <a href="https://on.soundcloud.com/myznmh1VYL29S5HmTb" target="_blank">Soundcloud</a>
+        <a href="https://open.spotify.com/artist/16Uhc1I720KzCh3bDmLXRP?si=QPCEk1SYSxiLcp3GxnyXaA" target="_blank">Spotify</a>
+        <a href="https://youtube.com/@thirdeyeroll-music?si=np21CCMTNIEbWjr-" target="_blank">YouTube</a>
+      </div>
+    </section>
+
+    <a href="contact.html" class="contact-link">Contact Us</a>
+
+    <footer>
+      <p>The Love Drops Songs © 2025 by The Love Drops is licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International</a>.</p>
+    </footer>
+  </main>
+</body>
+</html>
