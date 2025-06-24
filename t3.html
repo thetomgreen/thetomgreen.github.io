@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secret Access</title>
+  <style>
+    body {
+      background-color: #fffaf0;
+      font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+      text-align: center;
+      padding: 2rem;
+      color: #333;
+    }
+    input {
+      padding: 0.5rem;
+      font-size: 1rem;
+      margin: 0.5rem;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      background-color: #9d174d;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #7a103d;
+    }
+  </style>
+</head>
+<body>
+  <h1>Secret Page</h1>
+  <p>Enter password to continue:</p>
+  <input type="password" id="password" placeholder="Password">
+  <button onclick="checkPassword()">Enter</button>
+
+  <script>
+    function checkPassword() {
+      const input = document.getElementById('password').value;
+      if (input === 'sasquatch') {
+        window.location.href = 't3-index.html';
+      } else {
+        alert('Incorrect password');
+      }
+    }
+  </script>
+</body>
+</html>
