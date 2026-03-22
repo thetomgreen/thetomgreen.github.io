@@ -47,7 +47,6 @@
 
     .score-bar span { font-weight: bold; color: #7ec87e; }
 
-    /* GAME SCREEN */
     #game-screen {
       width: 100%;
       max-width: 480px;
@@ -79,9 +78,7 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    .bird-btn:active {
-      transform: scale(0.97);
-    }
+    .bird-btn:active { transform: scale(0.97); }
 
     .bird-btn .bird-name {
       font-size: 1.15rem;
@@ -90,40 +87,20 @@
       line-height: 1.3;
     }
 
-    .bird-btn .bird-hint {
-      font-size: 0.78rem;
-      color: #7a9a6a;
-      margin-top: 4px;
-    }
-
     .bird-btn.correct {
       background: #1a4a2a;
       border-color: #4caf50;
       animation: pulse-green 0.4s ease;
     }
 
-    .bird-btn.wrong {
-      background: #4a1a1a;
-      border-color: #e05050;
-    }
-
-    .bird-btn.reveal-fake {
-      background: #4a1a1a;
-      border-color: #e05050;
-    }
-
-    .bird-btn.reveal-real {
-      background: #1a4a2a;
-      border-color: #4caf50;
-    }
-
-    .bird-btn:disabled {
-      cursor: default;
-    }
+    .bird-btn.wrong   { background: #4a1a1a; border-color: #e05050; }
+    .bird-btn.reveal-fake { background: #4a1a1a; border-color: #e05050; }
+    .bird-btn.reveal-real { background: #1a4a2a; border-color: #4caf50; }
+    .bird-btn:disabled { cursor: default; }
 
     @keyframes pulse-green {
-      0% { box-shadow: 0 0 0 0 rgba(76,175,80,0.4); }
-      70% { box-shadow: 0 0 0 10px rgba(76,175,80,0); }
+      0%   { box-shadow: 0 0 0 0 rgba(76,175,80,0.4); }
+      70%  { box-shadow: 0 0 0 10px rgba(76,175,80,0); }
       100% { box-shadow: 0 0 0 0 rgba(76,175,80,0); }
     }
 
@@ -155,14 +132,10 @@
       font-weight: 700;
     }
 
-    .result-header.win { background: #1a4a2a; color: #7ec87e; }
+    .result-header.win  { background: #1a4a2a; color: #7ec87e; }
     .result-header.lose { background: #3a1a1a; color: #e07070; }
 
-    .real-birds {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-    }
+    .real-birds { display: flex; flex-direction: column; }
 
     .real-bird {
       padding: 14px 16px;
@@ -172,39 +145,45 @@
     .real-bird h3 {
       font-size: 1rem;
       color: #c8e0b8;
-      margin-bottom: 6px;
+      margin-bottom: 10px;
     }
 
-    .bird-photo {
+    .photo-wrap {
       width: 100%;
       border-radius: 10px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       background: #1a2a1a;
-      min-height: 140px;
-      object-fit: cover;
-      display: block;
+      min-height: 160px;
+      position: relative;
+      overflow: hidden;
     }
 
-    .bird-photo-placeholder {
-      width: 100%;
-      border-radius: 10px;
-      margin-bottom: 8px;
-      background: #1a2a1a;
-      height: 140px;
+    .photo-loading {
+      position: absolute;
+      inset: 0;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #4a6a4a;
-      font-size: 2rem;
+      font-size: 0.8rem;
     }
+
+    .bird-photo {
+      width: 100%;
+      display: block;
+      border-radius: 10px;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.35s ease;
+    }
+
+    .bird-photo.loaded { opacity: 1; }
 
     .fun-fact {
       font-size: 0.82rem;
       color: #9ab88a;
       line-height: 1.5;
     }
-
-    .fun-fact strong { color: #c8e0b8; }
 
     .next-btn {
       display: block;
@@ -247,9 +226,7 @@
 
 <div id="game-screen">
   <p class="question">Tap the bird you think is <strong>made up</strong></p>
-
   <div class="bird-cards" id="bird-cards"></div>
-
   <div id="result-panel">
     <div class="result-header" id="result-header"></div>
     <div class="real-birds" id="real-birds-info"></div>
@@ -259,200 +236,171 @@
 </div>
 
 <script>
-// Each round: two real birds + one fake
-// real birds have: name, funFact, wikiSearch (for photo lookup)
-// fake bird has: name only
+// ── Tuning ───────────────────────────────────────────────────────────────────
+// Weights for each fake-name style. Must sum to 1.
+// short  → single compound word, e.g. "Greysnipe", "Marshchat"
+// medium → adjective + compound,  e.g. "Russet Thornwren", "Dusky Bellchat"
+// hard   → hyphenated almost-real, e.g. "Pale-crowned Dustwren", "Lesser Crownfinch"
+const MIX = { short: 0.25, medium: 0.40, hard: 0.35 };
 
-const ROUNDS = [
-  {
-    fake: "Speckled Boingbird",
-    real: [
-      {
-        name: "Magnificent Frigatebird",
-        fact: "Males inflate a bright red throat pouch the size of a football to attract mates. They can stay airborne for up to two months straight, sleeping while they glide.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Magnificent_Frigatebird_RWD2.jpg/640px-Magnificent_Frigatebird_RWD2.jpg"
-      },
-      {
-        name: "Hoatzin",
-        fact: "Chicks are born with claws on their wings to climb trees — a trait not seen in other modern birds. Adults smell so strongly of manure they're called 'stinkbirds.'",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Hoatzin_-_Buffalo_Zoo.jpg/640px-Hoatzin_-_Buffalo_Zoo.jpg"
-      }
-    ]
+// ── Fake name parts ──────────────────────────────────────────────────────────
+const FAKE_PARTS = {
+  short: {
+    prefixes: ['Grey','Marsh','Blotch','Fen','Dusk','Mud','Stone','Rust','Buff','Dun',
+               'Brack','Mire','Tarn','Sedge','Crag','Silt','Heath','Moor','Peat','Holt'],
+    suffixes: ['snipe','chat','wing','wren','finch','bird','bill','cap','lark','crow','back','duck']
   },
-  {
-    fake: "Fluffy-backed Snorkelwren",
-    real: [
-      {
-        name: "Shoebill",
-        fact: "Its bill looks like a Dutch clog and can snap shut with enough force to decapitate a lungfish. It freezes statue-still for hours, then strikes with shocking speed.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Shoebill_Stork_crop.jpg/640px-Shoebill_Stork_crop.jpg"
-      },
-      {
-        name: "Potoo",
-        fact: "Potoos disguise themselves as broken tree stumps so convincingly that people walk right past them. They have notches in their closed eyelids so they can 'see' while pretending to be asleep.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Potoo_of_some_kind.jpg/640px-Potoo_of_some_kind.jpg"
-      }
-    ]
+  medium: {
+    simpleAdjs: ['Russet','Dusky','Pale','Rufous','Brown','Tawny','Sooty','Ashy',
+                 'Barred','Streaked','Slender','Speckled'],
+    hyphenAdjs: ['Short-billed','White-throated','Long-tailed','Red-faced',
+                 'Dark-backed','Thin-billed'],
+    modifiers:  ['Thorn','Bell','Crow','Gap','Mud','Dust','Crest','Brush','Marsh',
+                 'Stone','Cliff','Reed','Fen','Clatter','Creep','Rattle'],
+    birdTypes:  ['wren','chat','finch','bird','wing','warbler','larker','creeper',
+                 'runner','diver','shrike']
   },
-  {
-    fake: "Western Bumblequail",
-    real: [
-      {
-        name: "Superb Bird-of-Paradise",
-        fact: "The male transforms his body into an oval of iridescent blue-green to perform a dance for females. Scientists say it's one of the most surreal courtship displays ever recorded.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Lophorina_superba_-_Superb_bird-of-paradise.jpg/640px-Lophorina_superba_-_Superb_bird-of-paradise.jpg"
-      },
-      {
-        name: "Kakapo",
-        fact: "The world's fattest parrot is also entirely flightless and smells like flowers. It mates once every few years when a certain fruit tree blooms, so the whole species goes into a frenzy at the same time.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Kakapo_-_Sirocco.jpg/640px-Kakapo_-_Sirocco.jpg"
-      }
-    ]
-  },
-  {
-    fake: "Tufted Grumblefinch",
-    real: [
-      {
-        name: "Satanic Nightjar",
-        fact: "Named after a local legend in Sulawesi that said it was a messenger of evil. In reality it's a harmless, bug-eating bird — but it does have fiery orange eyes that glow in the dark.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Eurostopodus_diabolicus.jpg/640px-Eurostopodus_diabolicus.jpg"
-      },
-      {
-        name: "Long-wattled Umbrellabird",
-        fact: "The male sports a crest like a huge black umbrella and a dangling wattle up to 35cm long. He inflates it to boom like a foghorn to attract females.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Long-wattled_Umbrellabird_2.jpg/640px-Long-wattled_Umbrellabird_2.jpg"
-      }
-    ]
-  },
-  {
-    fake: "Ruddy Jigglesnipe",
-    real: [
-      {
-        name: "Bald Uakari",
-        fact: "Wait — that's a monkey! This slot belongs to the Spectacled Eider, a sea duck that winters in massive Arctic flocks of nearly 400,000 birds on the Bering Sea. They dive through sea ice holes to feed.",
-        photo: null
-      },
-      {
-        name: "Spectacled Eider",
-        fact: "Winters in enormous Arctic flocks of nearly 400,000 birds on the Bering Sea. They dive through holes in the ice to feed on clams. The male's goggle-like eye patches give it the look of a very stylish diver.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Somateria_fischeri_-_Alaska_-_male.jpg/640px-Somateria_fischeri_-_Alaska_-_male.jpg"
-      }
-    ]
-  },
-  {
-    fake: "Spotted Wobblecap",
-    real: [
-      {
-        name: "Ribbon-tailed Astrapia",
-        fact: "The male has tail feathers over 1 metre long — three times its body length. It's found only in a small part of New Guinea's highlands and the tails are prized as ornaments by local tribes.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Astrapia_mayeri_-_Ribbon-tailed_Astrapia.jpg/640px-Astrapia_mayeri_-_Ribbon-tailed_Astrapia.jpg"
-      },
-      {
-        name: "Helmeted Hornbill",
-        fact: "Unlike other hornbills, its casque is solid ivory. That made it a target for carvers — it's now more trafficked than elephant ivory in parts of Asia. Its call sounds like a human laughing, then speeding up to a hysterical cackle.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Helmeted_Hornbill_-_Buceros_vigil.jpg/640px-Helmeted_Hornbill_-_Buceros_vigil.jpg"
-      }
-    ]
-  },
-  {
-    fake: "Greater Honkleduck",
-    real: [
-      {
-        name: "Cock-of-the-rock",
-        fact: "The male is neon orange and looks like someone glued a UFO to its head. Males gather in groups called leks and show off together — the female wanders through and picks whoever she likes.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Cock-of-the-rock.jpg/640px-Cock-of-the-rock.jpg"
-      },
-      {
-        name: "Macaroni Penguin",
-        fact: "Named by British explorers after the 18th-century fashion of wearing extravagant feathered hats. With 18 million individuals it's the world's most numerous penguin — yet most people have never heard of it.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Macaroni_Penguin_at_Cooper_Bay.jpg/640px-Macaroni_Penguin_at_Cooper_Bay.jpg"
-      }
-    ]
-  },
-  {
-    fake: "Bearded Squabbleback",
-    real: [
-      {
-        name: "Shovel-billed Kookaburra",
-        fact: "Uses its flattened beak to dig through forest floor litter like a tiny bulldozer. Despite being related to the famous laughing kookaburra, it barely makes a sound.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/Shovel-billed_Kookaburra_-_Diphyllodes_respublica.jpg/640px-Shovel-billed_Kookaburra_-_Diphyllodes_respublica.jpg"
-      },
-      {
-        name: "Painted Bunting",
-        fact: "The male is so colourful — blue head, red chest, green back — that it looks like it was painted by a child with every crayon. It's real, but illegal to keep as a pet in the US despite a huge black market.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/Painted_Bunting.jpg/640px-Painted_Bunting.jpg"
-      }
-    ]
-  },
-  {
-    fake: "Whiskered Clonkbird",
-    real: [
-      {
-        name: "Oilbird",
-        fact: "The only nocturnal fruit-eating bird. Chicks get so fat on palm fruit they can weigh 50% more than their parents. Indigenous people harvested chicks and boiled them down for lamp oil — hence the name.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Steatornis_caripensis.jpg/640px-Steatornis_caripensis.jpg"
-      },
-      {
-        name: "Lyre Bird",
-        fact: "Can mimic chainsaws, camera shutters, car alarms, and other birds with stunning accuracy. Its full display takes 20 minutes and involves mimicking up to 20 different species in sequence.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Superb_Lyrebird.jpg/640px-Superb_Lyrebird.jpg"
-      }
-    ]
-  },
-  {
-    fake: "Crested Bibblewing",
-    real: [
-      {
-        name: "Harpy Eagle",
-        fact: "Powerful enough to carry off monkeys and sloths. Its talons are the same size as a grizzly bear's claws. Despite being a massive apex predator, it nests in a single tree for years and raises only one chick at a time.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f7/Harpy_Eagle_portrait.jpg/640px-Harpy_Eagle_portrait.jpg"
-      },
-      {
-        name: "Vulturine Guineafowl",
-        fact: "Despite the ominous name, it's a sociable bird that travels in gangs of up to 60. Recent research found they maintain complex social networks — groups that regularly interact but stay distinct, like human communities.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9f/Vulturine_guineafowl_2.jpg/640px-Vulturine_guineafowl_2.jpg"
-      }
-    ]
-  },
-  {
-    fake: "Tawny Flobblewhistle",
-    real: [
-      {
-        name: "Snowy Sheathbill",
-        fact: "The only land bird native to Antarctica with no webbed feet. Survives by scavenging — it steals fish from penguins mid-feed, eats penguin chicks, placentas, and anything else it can find. Basically Antarctica's rat.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Snowy_sheathbill.jpg/640px-Snowy_sheathbill.jpg"
-      },
-      {
-        name: "Blue-footed Booby",
-        fact: "Those blue feet aren't just for looking good — females literally judge a male's health by the brightness of his feet. They do a high-stepping dance to show them off. Young boobies have dull feet; old ones have spectacular ones.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Blue-footed-booby.jpg/640px-Blue-footed-booby.jpg"
-      }
-    ]
-  },
-  {
-    fake: "Patchwork Sneezefinch",
-    real: [
-      {
-        name: "Secretary Bird",
-        fact: "A 1.3-metre tall eagle that walks. It hunts snakes by stamping them to death with scaly legs, delivering kicks with four times the force needed to break bone. Wears a punk feather crown.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Sagittarius_serpentarius_-Serengeti%2C_Tanzania-8.jpg/640px-Sagittarius_serpentarius_-Serengeti%2C_Tanzania-8.jpg"
-      },
-      {
-        name: "Sword-billed Hummingbird",
-        fact: "The only bird whose bill is longer than its body. It evolved specifically to reach nectar in a single species of passionflower — a perfect, exclusive co-dependency millions of years in the making.",
-        photo: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Sword-billed_hummingbird.jpg/640px-Sword-billed_hummingbird.jpg"
-      }
-    ]
+  hard: {
+    colors:    ['Pale','Golden','Black','Rufous','White','Buff','Dusky','Russet',
+                'Streaked','Barred','Spotted','Sooty','Ash'],
+    bodyParts: ['crowned','browed','breasted','vented','winged','backed','capped',
+                'fronted','bellied','throated','billed','rumped','tailed'],
+    habitats:  ['Dust','Whistle','Crest','Bell','Mud','Crown','Thorn','Creep',
+                'Marsh','Reed','Cliff','Mire','Heath','Rattle','Gap'],
+    birdTypes: ['wren','finch','bird','chat','larker','warbler','runner','shrike','diver'],
+    scales:    ['Lesser','Greater','Common','Northern','Southern','Eastern','Western']
   }
+};
+
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+const usedFakeNames = new Set();
+
+function generateFakeName() {
+  let name, attempts = 0;
+  do {
+    const r = Math.random();
+    if (r < MIX.short) {
+      name = pick(FAKE_PARTS.short.prefixes) + pick(FAKE_PARTS.short.suffixes);
+    } else if (r < MIX.short + MIX.medium) {
+      const adj = Math.random() < 0.3
+        ? pick(FAKE_PARTS.medium.hyphenAdjs)
+        : pick(FAKE_PARTS.medium.simpleAdjs);
+      name = `${adj} ${pick(FAKE_PARTS.medium.modifiers)}${pick(FAKE_PARTS.medium.birdTypes)}`;
+    } else {
+      if (Math.random() < 0.7) {
+        name = `${pick(FAKE_PARTS.hard.colors)}-${pick(FAKE_PARTS.hard.bodyParts)} ` +
+               `${pick(FAKE_PARTS.hard.habitats)}${pick(FAKE_PARTS.hard.birdTypes)}`;
+      } else {
+        name = `${pick(FAKE_PARTS.hard.scales)} ` +
+               `${pick(FAKE_PARTS.hard.habitats)}${pick(FAKE_PARTS.hard.birdTypes)}`;
+      }
+    }
+    attempts++;
+  } while (usedFakeNames.has(name) && attempts < 100);
+  usedFakeNames.add(name);
+  return name;
+}
+
+// ── Real bird data ───────────────────────────────────────────────────────────
+const ROUNDS = [
+  { real: [
+    { name: "Magnificent Frigatebird",
+      fact: "Males inflate a bright red throat pouch the size of a football to attract mates. They can stay airborne for up to two months straight, sleeping while they glide." },
+    { name: "Hoatzin",
+      fact: "Chicks are born with claws on their wings to climb trees — a trait not seen in other modern birds. Adults smell so strongly of manure they're called 'stinkbirds.'" }
+  ]},
+  { real: [
+    { name: "Shoebill",
+      fact: "Its bill looks like a Dutch clog and can snap shut with enough force to decapitate a lungfish. It freezes statue-still for hours, then strikes with shocking speed." },
+    { name: "Potoo",
+      fact: "Potoos disguise themselves as broken tree stumps so convincingly that people walk right past them. They have notches in their closed eyelids so they can 'see' while pretending to be asleep." }
+  ]},
+  { real: [
+    { name: "Superb Bird-of-Paradise",
+      fact: "The male transforms his body into an oval of iridescent blue-green to perform a dance for females. Scientists say it's one of the most surreal courtship displays ever recorded." },
+    { name: "Kakapo",
+      fact: "The world's fattest parrot is also entirely flightless and smells like flowers. It mates once every few years when a certain fruit tree blooms, so the whole species goes into a frenzy at the same time." }
+  ]},
+  { real: [
+    { name: "Satanic Nightjar",
+      fact: "Named after a local legend in Sulawesi that said it was a messenger of evil. In reality it's a harmless, bug-eating bird — but it does have fiery orange eyes that glow in the dark." },
+    { name: "Long-wattled Umbrellabird",
+      fact: "The male sports a crest like a huge black umbrella and a dangling wattle up to 35cm long. He inflates it to boom like a foghorn to attract females." }
+  ]},
+  { real: [
+    { name: "Wilson's Bird-of-Paradise",
+      fact: "Found on a single tiny island in Indonesia. The male has bare turquoise skin on its head, a curled blue tail wire, and a cape of yellow and red. The bare scalp acts like a stage light, brightening during courtship." },
+    { name: "Spectacled Eider",
+      fact: "Winters in enormous Arctic flocks of nearly 400,000 birds on the Bering Sea. They dive through holes in the ice to feed on clams. The male's goggle-like eye patches give it the look of a very stylish diver." }
+  ]},
+  { real: [
+    { name: "Ribbon-tailed Astrapia",
+      fact: "The male has tail feathers over 1 metre long — three times its body length. It's found only in a small part of New Guinea's highlands and the tails are prized as ornaments by local tribes." },
+    { name: "Helmeted Hornbill",
+      fact: "Unlike other hornbills, its casque is solid ivory. That made it a target for carvers — it's now more trafficked than elephant ivory in parts of Asia. Its call sounds like a human laughing, then speeding up to a hysterical cackle." }
+  ]},
+  { real: [
+    { name: "Cock-of-the-rock",
+      fact: "The male is neon orange and looks like someone glued a UFO to its head. Males gather in groups called leks and show off together — the female wanders through and picks whoever she likes." },
+    { name: "Macaroni Penguin",
+      fact: "Named by British explorers after the 18th-century fashion of wearing extravagant feathered hats. With 18 million individuals it's the world's most numerous penguin — yet most people have never heard of it." }
+  ]},
+  { real: [
+    { name: "Shovel-billed Kookaburra",
+      fact: "Uses its flattened beak to dig through forest floor litter like a tiny bulldozer. Despite being related to the famous laughing kookaburra, it barely makes a sound." },
+    { name: "Painted Bunting",
+      fact: "The male is so colourful — blue head, red chest, green back — that it looks like it was painted by a child with every crayon. It's real, but illegal to keep as a pet in the US despite a huge black market." }
+  ]},
+  { real: [
+    { name: "Oilbird",
+      fact: "The only nocturnal fruit-eating bird. Chicks get so fat on palm fruit they can weigh 50% more than their parents. Indigenous people harvested chicks and boiled them down for lamp oil — hence the name." },
+    { name: "Lyrebird",
+      fact: "Can mimic chainsaws, camera shutters, car alarms, and other birds with stunning accuracy. Its full display takes 20 minutes and involves mimicking up to 20 different species in sequence." }
+  ]},
+  { real: [
+    { name: "Harpy Eagle",
+      fact: "Powerful enough to carry off monkeys and sloths. Its talons are the same size as a grizzly bear's claws. Despite being a massive apex predator, it nests in a single tree for years and raises only one chick at a time." },
+    { name: "Vulturine Guineafowl",
+      fact: "Despite the ominous name, it's a sociable bird that travels in gangs of up to 60. Recent research found they maintain complex social networks — groups that regularly interact but stay distinct, like human communities." }
+  ]},
+  { real: [
+    { name: "Snowy Sheathbill",
+      fact: "The only land bird native to Antarctica with no webbed feet. Survives by scavenging — it steals fish from penguins mid-feed, eats penguin chicks, placentas, and anything else it can find. Basically Antarctica's rat." },
+    { name: "Blue-footed Booby",
+      fact: "Those blue feet aren't just for looking good — females literally judge a male's health by the brightness of his feet. They do a high-stepping dance to show them off. Young boobies have dull feet; old ones have spectacular ones." }
+  ]},
+  { real: [
+    { name: "Secretary Bird",
+      fact: "A 1.3-metre tall eagle that walks. It hunts snakes by stamping them to death with scaly legs, delivering kicks with four times the force needed to break bone. Wears a punk feather crown." },
+    { name: "Sword-billed Hummingbird",
+      fact: "The only bird whose bill is longer than its body. It evolved specifically to reach nectar in a single species of passionflower — a perfect, exclusive co-dependency millions of years in the making." }
+  ]}
 ];
 
-// State
-let score = 0;
-let streak = 0;
-let bestStreak = 0;
-let currentRound = null;
-let usedIndices = [];
-let answered = false;
+// ── Photo fetching ───────────────────────────────────────────────────────────
+async function fetchBirdPhoto(birdName) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(
+      `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(birdName)}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.thumbnail?.source ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Game state ───────────────────────────────────────────────────────────────
+let score = 0, streak = 0, bestStreak = 0;
+let currentRound = null, answered = false;
+let usedRoundIndices = [];
+let photoPromises = [];
 
 function shuffle(arr) {
   const a = [...arr];
@@ -463,18 +411,18 @@ function shuffle(arr) {
   return a;
 }
 
-function pickRound() {
-  if (usedIndices.length >= ROUNDS.length) usedIndices = [];
-  let idx;
-  do { idx = Math.floor(Math.random() * ROUNDS.length); }
-  while (usedIndices.includes(idx));
-  usedIndices.push(idx);
-  return ROUNDS[idx];
-}
-
 function startRound() {
   answered = false;
-  currentRound = pickRound();
+  if (usedRoundIndices.length >= ROUNDS.length) usedRoundIndices = [];
+  let idx;
+  do { idx = Math.floor(Math.random() * ROUNDS.length); }
+  while (usedRoundIndices.includes(idx));
+  usedRoundIndices.push(idx);
+
+  currentRound = { ...ROUNDS[idx], fake: generateFakeName() };
+
+  // Kick off photo fetches in background while user is thinking
+  photoPromises = currentRound.real.map(b => fetchBirdPhoto(b.name));
 
   const options = shuffle([
     { name: currentRound.fake, isFake: true },
@@ -484,8 +432,7 @@ function startRound() {
 
   const cards = document.getElementById('bird-cards');
   cards.innerHTML = '';
-
-  options.forEach((opt, i) => {
+  options.forEach(opt => {
     const btn = document.createElement('button');
     btn.className = 'bird-btn';
     btn.dataset.fake = opt.isFake;
@@ -497,12 +444,11 @@ function startRound() {
   document.getElementById('result-panel').style.display = 'none';
 }
 
-function handleGuess(pickedFake, pickedName) {
+async function handleGuess(pickedFake, pickedName) {
   if (answered) return;
   answered = true;
 
-  const correct = pickedFake;
-  if (correct) {
+  if (pickedFake) {
     score++;
     streak++;
     if (streak > bestStreak) bestStreak = streak;
@@ -513,62 +459,60 @@ function handleGuess(pickedFake, pickedName) {
   document.getElementById('score').textContent = score;
   document.getElementById('best-streak').textContent = bestStreak;
 
-  // Colour the buttons
-  const buttons = document.querySelectorAll('.bird-btn');
-  buttons.forEach(btn => {
+  document.querySelectorAll('.bird-btn').forEach(btn => {
     btn.disabled = true;
     const isFakeBtn = btn.dataset.fake === 'true';
     const wasClicked = btn.querySelector('.bird-name').textContent === pickedName;
-
-    if (isFakeBtn) {
-      btn.classList.add('reveal-fake');
-      btn.innerHTML += `<div class="result-label label-fake">✗ FAKE</div>`;
-    } else {
-      btn.classList.add('reveal-real');
-      btn.innerHTML += `<div class="result-label label-real">✓ REAL</div>`;
-    }
-
-    if (wasClicked && correct) btn.classList.add('correct');
-    if (wasClicked && !correct) btn.classList.add('wrong');
+    btn.classList.add(isFakeBtn ? 'reveal-fake' : 'reveal-real');
+    btn.innerHTML += `<div class="result-label ${isFakeBtn ? 'label-fake' : 'label-real'}">${isFakeBtn ? '✗ FAKE' : '✓ REAL'}</div>`;
+    if (wasClicked && pickedFake)  btn.classList.add('correct');
+    if (wasClicked && !pickedFake) btn.classList.add('wrong');
   });
 
-  // Show result panel
-  const panel = document.getElementById('result-panel');
   const header = document.getElementById('result-header');
+  header.textContent = pickedFake
+    ? (streak >= 3 ? `✓ Correct! 🔥 ${streak} in a row!` : '✓ Correct!')
+    : `✗ Nope! The fake was: ${currentRound.fake}`;
+  header.className = `result-header ${pickedFake ? 'win' : 'lose'}`;
 
-  if (correct) {
-    header.textContent = streak >= 3 ? `✓ Correct! 🔥 ${streak} in a row!` : '✓ Correct!';
-    header.className = 'result-header win';
-  } else {
-    header.textContent = '✗ Nope! The fake was: ' + currentRound.fake;
-    header.className = 'result-header lose';
-  }
-
-  // Real bird info
+  // Build result panel with photo placeholders
   const info = document.getElementById('real-birds-info');
   info.innerHTML = '';
-  currentRound.real.forEach(bird => {
+  currentRound.real.forEach((bird, i) => {
     const div = document.createElement('div');
     div.className = 'real-bird';
-
-    let photoHTML = '';
-    if (bird.photo) {
-      photoHTML = `<img class="bird-photo" src="${bird.photo}" alt="${bird.name}" loading="lazy" onerror="this.style.display='none'">`;
-    }
-
     div.innerHTML = `
       <h3>${bird.name}</h3>
-      ${photoHTML}
+      <div class="photo-wrap" id="photo-wrap-${i}">
+        <div class="photo-loading">loading photo…</div>
+        <img id="bird-photo-${i}" class="bird-photo" alt="${bird.name}">
+      </div>
       <p class="fun-fact">${bird.fact}</p>
     `;
     info.appendChild(div);
   });
 
-  const streakEl = document.getElementById('streak-display');
-  streakEl.innerHTML = streak >= 2 ? `🔥 Current streak: <span>${streak}</span>` : '';
+  document.getElementById('streak-display').innerHTML =
+    streak >= 2 ? `🔥 Current streak: <span>${streak}</span>` : '';
 
+  const panel = document.getElementById('result-panel');
   panel.style.display = 'block';
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  // Resolve photos (likely already fetched while user was thinking)
+  const photos = await Promise.all(photoPromises);
+  photos.forEach((src, i) => {
+    const wrap = document.getElementById(`photo-wrap-${i}`);
+    const img  = document.getElementById(`bird-photo-${i}`);
+    if (!wrap || !img) return;
+    if (src) {
+      img.onload  = () => img.classList.add('loaded');
+      img.onerror = () => { wrap.style.display = 'none'; };
+      img.src = src;
+    } else {
+      wrap.style.display = 'none';
+    }
+  });
 }
 
 function nextRound() {
