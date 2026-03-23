@@ -298,23 +298,19 @@
 
 <script>
 // ── Difficulty settings ───────────────────────────────────────────────────────
-// Weights for each fake-name style per difficulty level.
-// short  → single compound word, e.g. "Greysnipe", "Marshchat"       (easy to spot)
-// medium → adjective + compound,  e.g. "Russet Thornwren"            (moderate)
-// hard   → hyphenated almost-real, e.g. "Pale-crowned Dustwren"      (hard to spot)
-const DIFFICULTY_MIX = {
-  easy:   { short: 0.70, medium: 0.30, hard: 0.00 },
-  medium: { short: 0.25, medium: 0.40, hard: 0.35 },
-  hard:   { short: 0.00, medium: 0.15, hard: 0.85 },
-};
+// Difficulty controls the STYLE of fake name, not the length.
+// All three lengths (short/medium/long) appear at every difficulty level.
+//
+// easy   → silly/funny names (Boingbird, Wobbly Flumpwren, Greater Giggly Noodlelark)
+// medium → plausible invented names (Greysnipe, Dusky Thornwren, Pale-crowned Reedwarbler)
+// hard   → convincing real-bird-pattern names (Yellow-naped Warbler, Lesser Rufous-fronted Pipit)
 
-let selectedDifficulty = 'auto'; // 'easy' | 'medium' | 'hard' | 'auto'
+let selectedDifficulty = 'auto';
 let adaptiveDifficulty = 'medium';
-let recentResults = [];          // last 5 booleans (true=correct)
+let recentResults = [];
 
-function getCurrentMix() {
-  const level = selectedDifficulty === 'auto' ? adaptiveDifficulty : selectedDifficulty;
-  return DIFFICULTY_MIX[level];
+function getStyle() {
+  return selectedDifficulty === 'auto' ? adaptiveDifficulty : selectedDifficulty;
 }
 
 function setDifficulty(level) {
@@ -332,10 +328,10 @@ function updateAdaptiveDifficulty(correct) {
   const last3 = recentResults.slice(-3);
   const correct3 = last3.filter(Boolean).length;
   if (correct3 === 3) {
-    if (adaptiveDifficulty === 'easy')   adaptiveDifficulty = 'medium';
+    if (adaptiveDifficulty === 'easy')        adaptiveDifficulty = 'medium';
     else if (adaptiveDifficulty === 'medium') adaptiveDifficulty = 'hard';
   } else if (correct3 <= 1) {
-    if (adaptiveDifficulty === 'hard')   adaptiveDifficulty = 'medium';
+    if (adaptiveDifficulty === 'hard')        adaptiveDifficulty = 'medium';
     else if (adaptiveDifficulty === 'medium') adaptiveDifficulty = 'easy';
   }
   updateAdaptiveLabel();
@@ -343,40 +339,76 @@ function updateAdaptiveDifficulty(correct) {
 
 function updateAdaptiveLabel() {
   const el = document.getElementById('adaptive-label');
-  if (selectedDifficulty === 'auto') {
-    el.textContent = `(${adaptiveDifficulty})`;
-  } else {
-    el.textContent = '';
-  }
+  el.textContent = selectedDifficulty === 'auto' ? `(${adaptiveDifficulty})` : '';
 }
 
 // ── Fake name parts ──────────────────────────────────────────────────────────
-const FAKE_PARTS = {
-  short: {
-    prefixes: ['Grey','Marsh','Blotch','Fen','Dusk','Mud','Stone','Rust','Buff','Dun',
-               'Brack','Mire','Tarn','Sedge','Crag','Silt','Heath','Moor','Peat','Holt'],
-    suffixes: ['snipe','chat','wing','wren','finch','bird','bill','cap','lark','crow','back','duck']
-  },
-  medium: {
-    simpleAdjs: ['Russet','Dusky','Pale','Rufous','Brown','Tawny','Sooty','Ashy',
-                 'Barred','Streaked','Slender','Speckled'],
-    hyphenAdjs: ['Short-billed','White-throated','Long-tailed','Red-faced',
-                 'Dark-backed','Thin-billed'],
-    modifiers:  ['Thorn','Bell','Crow','Gap','Mud','Dust','Crest','Brush','Marsh',
-                 'Stone','Cliff','Reed','Fen','Clatter','Creep','Rattle'],
-    birdTypes:  ['wren','chat','finch','bird','wing','warbler','larker','creeper',
-                 'runner','diver','shrike']
-  },
-  hard: {
-    colors:    ['Pale','Golden','Black','Rufous','White','Buff','Dusky','Russet',
-                'Streaked','Barred','Spotted','Sooty','Ash'],
-    bodyParts: ['crowned','browed','breasted','vented','winged','backed','capped',
-                'fronted','bellied','throated','billed','rumped','tailed'],
-    habitats:  ['Dust','Whistle','Crest','Bell','Mud','Crown','Thorn','Creep',
-                'Marsh','Reed','Cliff','Mire','Heath','Rattle','Gap'],
-    birdTypes: ['wren','finch','bird','chat','larker','warbler','runner','shrike','diver'],
-    scales:    ['Lesser','Greater','Common','Northern','Southern','Eastern','Western']
-  }
+
+// EASY: silly/funny — obviously made up
+const SILLY = {
+  shortPre: ['Boing','Flump','Wobble','Snork','Bumble','Splat','Squonk','Doodle',
+             'Noodle','Twiddle','Fumble','Rumple','Bubble','Giggle','Wiggle',
+             'Jiggle','Boggle','Blorp','Fizzle','Bibble','Wibble','Clonk','Honkle'],
+  shortSuf: ['bird','finch','wren','chat','lark','beak','plop','wing','puff','bob',
+             'flap','honk','bonk','toot','blorp','squeak','peep','clonk','wig'],
+  medAdj:   ['Wobbly','Giggly','Fluffy','Puffy','Fuzzy','Chubby','Grumpy','Sleepy',
+             'Bouncy','Squishy','Bumbling','Tumbling','Shuffling','Waddling','Droopy',
+             'Flappy','Sneezy','Doofy','Noodly','Blobby','Squiggly','Plonky'],
+  medNoun:  ['Boing','Flump','Splat','Squonk','Noodle','Doodle','Rumple','Bubble',
+             'Wobble','Twiddle','Fumble','Giggle','Wiggle','Blorp','Fizzle','Bibble',
+             'Honkle','Plonk','Squibble','Flibble'],
+  medSuf:   ['bird','finch','wren','chat','lark','puff','bob','honk','wig','peep'],
+  longScale:['Greater','Lesser','Common','Giant','Tiny','Enormous','Northern','Spotted'],
+  longAdj:  ['Wobbly','Giggly','Fluffy','Chubby','Bouncy','Squishy','Doofy','Flappy',
+             'Blotchy','Pudgy','Sneezy','Droopy'],
+  longNoun: ['Boing','Flump','Splat','Noodle','Doodle','Bubble','Wobble','Fizzle',
+             'Honkle','Plonk','Squonk','Bibble'],
+  longSuf:  ['bird','finch','wren','lark','puff','honk','chat','wig'],
+};
+
+// MEDIUM: plausible invented names — all three lengths
+const PLAUSIBLE = {
+  shortPre: ['Grey','Marsh','Blotch','Fen','Dusk','Mud','Stone','Rust','Buff','Dun',
+             'Brack','Mire','Tarn','Sedge','Crag','Silt','Heath','Moor','Peat','Holt',
+             'Gorse','Brake','Holm','Knoll','Copse','Shale','Dale','Brae','Quag'],
+  shortSuf: ['snipe','chat','wing','wren','finch','bird','bill','cap','lark','back',
+             'duck','swift','tern','hawk','dive','creep','perch','brush'],
+  medSimple:['Russet','Dusky','Pale','Rufous','Brown','Tawny','Sooty','Ashy',
+             'Barred','Streaked','Slender','Speckled','Mottled','Dappled','Ochre',
+             'Sallow','Dingy','Smudgy','Blotched','Grizzled'],
+  medHyphen:['Short-billed','White-throated','Long-tailed','Red-faced','Dark-backed',
+             'Thin-billed','Broad-winged','Deep-chested','Stout-legged','Sharp-winged'],
+  medMod:   ['Thorn','Bell','Crow','Gap','Mud','Dust','Crest','Brush','Marsh','Stone',
+             'Cliff','Reed','Fen','Clatter','Creep','Rattle','Gorse','Sedge','Mire',
+             'Brake','Shale','Brack','Quag','Holt','Dale'],
+  medType:  ['wren','chat','finch','bird','wing','warbler','creeper','runner','diver',
+             'shrike','martin','swift','hawk','lark'],
+  longColor:['Pale','Golden','Black','Rufous','White','Buff','Dusky','Russet','Streaked',
+             'Barred','Spotted','Sooty','Ash','Ochre','Tawny','Smudgy','Grizzled'],
+  longPart: ['crowned','browed','breasted','vented','winged','backed','capped','fronted',
+             'bellied','throated','billed','rumped','tailed','naped','faced','shouldered'],
+  longHab:  ['Dust','Whistle','Crest','Bell','Mud','Crown','Thorn','Creep','Marsh','Reed',
+             'Cliff','Mire','Heath','Rattle','Gap','Sedge','Gorse','Brake','Dale','Shale'],
+  longType: ['wren','finch','bird','chat','warbler','runner','shrike','diver','lark','hawk'],
+  scale:    ['Lesser','Greater','Common','Northern','Southern','Eastern','Western','Spotted'],
+};
+
+// HARD: follows real bird naming conventions — subtle and convincing
+const SNEAKY = {
+  color:    ['Yellow','Red','Black','White','Blue','Purple','Golden','Rufous','Chestnut',
+             'Olive','Gray','Brown','Tawny','Orange','Cinnamon','Crimson','Indigo','Scarlet',
+             'Buff','Ochre','Slate','Rusty','Sooty','Drab','Fulvous','Vinous','Isabelline'],
+  bodyPart: ['crowned','throated','backed','winged','breasted','bellied','faced','headed',
+             'capped','vented','rumped','tailed','billed','footed','cheeked','eared','browed',
+             'fronted','collared','ringed','naped','shouldered','flanked','barred','spotted'],
+  type:     ['Warbler','Tanager','Finch','Sparrow','Flycatcher','Vireo','Thrush','Wren',
+             'Nuthatch','Kingfisher','Hummingbird','Hawk','Dove','Plover','Heron','Bunting',
+             'Grosbeak','Swallow','Pipit','Babbler','Sunbird','Honeyeater','Manakin',
+             'Trogon','Barbet','Woodpecker','Pitta','Monarch','Fantail','Laughingthrush',
+             'Cisticola','Prinia','Bulbul','White-eye','Flowerpecker','Leafbird'],
+  scale:    ['Lesser','Greater','Common','Northern','Southern','Eastern','Western',
+             'Eurasian','American','African','Asian','Pacific','Mountain','Forest',
+             'Streaked','Plain','Pale','Little','Slender'],
 };
 
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -385,23 +417,44 @@ const usedFakeNames = new Set();
 
 function generateFakeName() {
   let name, attempts = 0;
-  const MIX = getCurrentMix();
+  const style = getStyle();
   do {
-    const r = Math.random();
-    if (r < MIX.short) {
-      name = pick(FAKE_PARTS.short.prefixes) + pick(FAKE_PARTS.short.suffixes);
-    } else if (r < MIX.short + MIX.medium) {
-      const adj = Math.random() < 0.3
-        ? pick(FAKE_PARTS.medium.hyphenAdjs)
-        : pick(FAKE_PARTS.medium.simpleAdjs);
-      name = `${adj} ${pick(FAKE_PARTS.medium.modifiers)}${pick(FAKE_PARTS.medium.birdTypes)}`;
-    } else {
-      if (Math.random() < 0.7) {
-        name = `${pick(FAKE_PARTS.hard.colors)}-${pick(FAKE_PARTS.hard.bodyParts)} ` +
-               `${pick(FAKE_PARTS.hard.habitats)}${pick(FAKE_PARTS.hard.birdTypes)}`;
+    const len = Math.floor(Math.random() * 3); // 0=short, 1=medium, 2=long
+    if (style === 'easy') {
+      if (len === 0) {
+        name = pick(SILLY.shortPre) + pick(SILLY.shortSuf);
+      } else if (len === 1) {
+        name = `${pick(SILLY.medAdj)} ${pick(SILLY.medNoun)}${pick(SILLY.medSuf)}`;
       } else {
-        name = `${pick(FAKE_PARTS.hard.scales)} ` +
-               `${pick(FAKE_PARTS.hard.habitats)}${pick(FAKE_PARTS.hard.birdTypes)}`;
+        name = `${pick(SILLY.longScale)} ${pick(SILLY.longAdj)} ${pick(SILLY.longNoun)}${pick(SILLY.longSuf)}`;
+      }
+    } else if (style === 'medium') {
+      if (len === 0) {
+        name = pick(PLAUSIBLE.shortPre) + pick(PLAUSIBLE.shortSuf);
+      } else if (len === 1) {
+        const adj = Math.random() < 0.3 ? pick(PLAUSIBLE.medHyphen) : pick(PLAUSIBLE.medSimple);
+        name = `${adj} ${pick(PLAUSIBLE.medMod)}${pick(PLAUSIBLE.medType)}`;
+      } else {
+        if (Math.random() < 0.7) {
+          name = `${pick(PLAUSIBLE.longColor)}-${pick(PLAUSIBLE.longPart)} ${pick(PLAUSIBLE.longHab)}${pick(PLAUSIBLE.longType)}`;
+        } else {
+          name = `${pick(PLAUSIBLE.scale)} ${pick(PLAUSIBLE.longHab)}${pick(PLAUSIBLE.longType)}`;
+        }
+      }
+    } else { // hard
+      if (len === 0) {
+        // "Color-bodypart Type" — core real-bird format
+        name = `${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
+      } else if (len === 1) {
+        // Same format, slightly varied phrasing
+        name = `${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
+      } else {
+        // "Scale Color-bodypart Type" or "Scale Color Type"
+        if (Math.random() < 0.6) {
+          name = `${pick(SNEAKY.scale)} ${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
+        } else {
+          name = `${pick(SNEAKY.scale)} ${pick(SNEAKY.color)} ${pick(SNEAKY.type)}`;
+        }
       }
     }
     attempts++;
