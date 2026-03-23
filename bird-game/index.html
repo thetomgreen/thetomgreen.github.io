@@ -308,6 +308,7 @@
 let selectedDifficulty = 'auto';
 let adaptiveDifficulty = 'medium';
 let recentResults = [];
+let lastFakeStyle = 'auto';
 
 function getStyle() {
   return selectedDifficulty === 'auto' ? adaptiveDifficulty : selectedDifficulty;
@@ -434,6 +435,7 @@ const usedFakeNames = new Set();
 function generateFakeName() {
   let name, attempts = 0;
   const style = getStyle();
+  console.log('[DEBUG] generateFakeName called, style =', style, '| selectedDifficulty =', selectedDifficulty, '| adaptiveDifficulty =', adaptiveDifficulty);
   do {
     const len = Math.floor(Math.random() * 3); // 0=short, 1=medium, 2=long
     if (style === 'easy') {
@@ -472,6 +474,8 @@ function generateFakeName() {
     attempts++;
   } while (usedFakeNames.has(name) && attempts < 100);
   usedFakeNames.add(name);
+  console.log('[DEBUG] Generated fake name:', name, '(style:', style + ')');
+  lastFakeStyle = style;
   return name;
 }
 
@@ -685,7 +689,7 @@ function startRound() {
     const btn = document.createElement('button');
     btn.className = 'bird-btn';
     btn.dataset.fake = opt.isFake;
-    btn.innerHTML = `<div class="bird-name">${opt.name}</div>`;
+    btn.innerHTML = `<div class="bird-name">${opt.name}</div>${opt.isFake ? `<div style="font-size:0.6rem;opacity:0.5;margin-top:2px">[DEBUG style: ${lastFakeStyle}]</div>` : ''}`;
     btn.onclick = () => handleGuess(opt.isFake, opt.name);
     cards.appendChild(btn);
   });
