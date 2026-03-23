@@ -348,22 +348,31 @@ function updateAdaptiveLabel() {
 const SILLY = {
   shortPre: ['Boing','Flump','Wobble','Snork','Bumble','Splat','Squonk','Doodle',
              'Noodle','Twiddle','Fumble','Rumple','Bubble','Giggle','Wiggle',
-             'Jiggle','Boggle','Blorp','Fizzle','Bibble','Wibble','Clonk','Honkle'],
+             'Jiggle','Boggle','Blorp','Fizzle','Bibble','Wibble','Clonk','Honkle',
+             'Plonk','Wuffle','Snibble','Flibble','Grumble','Tumble','Squibble',
+             'Flooble','Zibble','Snuffler','Blorple','Yibble','Quibble','Snortle'],
   shortSuf: ['bird','finch','wren','chat','lark','beak','plop','wing','puff','bob',
-             'flap','honk','bonk','toot','blorp','squeak','peep','clonk','wig'],
+             'flap','honk','bonk','toot','blorp','squeak','peep','clonk','wig',
+             'boink','fizzer','doodler','bonker','noodler','blonker','squibble'],
   medAdj:   ['Wobbly','Giggly','Fluffy','Puffy','Fuzzy','Chubby','Grumpy','Sleepy',
              'Bouncy','Squishy','Bumbling','Tumbling','Shuffling','Waddling','Droopy',
-             'Flappy','Sneezy','Doofy','Noodly','Blobby','Squiggly','Plonky'],
+             'Flappy','Sneezy','Doofy','Noodly','Blobby','Squiggly','Plonky',
+             'Blundering','Lumpy','Honky','Sniffly','Boggle-eyed','Roly-poly',
+             'Pudgy','Floopy','Snorting','Gurgling','Teetering','Flumping'],
   medNoun:  ['Boing','Flump','Splat','Squonk','Noodle','Doodle','Rumple','Bubble',
              'Wobble','Twiddle','Fumble','Giggle','Wiggle','Blorp','Fizzle','Bibble',
-             'Honkle','Plonk','Squibble','Flibble'],
-  medSuf:   ['bird','finch','wren','chat','lark','puff','bob','honk','wig','peep'],
-  longScale:['Greater','Lesser','Common','Giant','Tiny','Enormous','Northern','Spotted'],
+             'Honkle','Plonk','Squibble','Flibble','Wuffle','Zibble','Flooble',
+             'Snortle','Yibble','Blorple','Quibble'],
+  medSuf:   ['bird','finch','wren','chat','lark','puff','bob','honk','wig','peep',
+             'noodler','bonker','doodler','wing','plonk','squibbler'],
+  longScale:['Greater','Lesser','Common','Giant','Tiny','Enormous','Northern','Spotted',
+             'Magnificent','Bumbling','Tremendous','Bewildering','Extraordinary'],
   longAdj:  ['Wobbly','Giggly','Fluffy','Chubby','Bouncy','Squishy','Doofy','Flappy',
-             'Blotchy','Pudgy','Sneezy','Droopy'],
+             'Blotchy','Pudgy','Sneezy','Droopy','Noodly','Lumpy','Blobby','Honky',
+             'Roly-poly','Boggle-eyed','Squiggly','Floopy','Teetering','Gurgling'],
   longNoun: ['Boing','Flump','Splat','Noodle','Doodle','Bubble','Wobble','Fizzle',
-             'Honkle','Plonk','Squonk','Bibble'],
-  longSuf:  ['bird','finch','wren','lark','puff','honk','chat','wig'],
+             'Honkle','Plonk','Squonk','Bibble','Wuffle','Blorp','Squibble','Snortle'],
+  longSuf:  ['bird','finch','wren','lark','puff','honk','chat','wig','noodler','bonker'],
 };
 
 // MEDIUM: plausible invented names — all three lengths
@@ -394,21 +403,28 @@ const PLAUSIBLE = {
 };
 
 // HARD: follows real bird naming conventions — subtle and convincing
+// Three distinct formats, one per length:
+//   short  → "Color-bodypart Type"            e.g. Rufous-bellied Warbler
+//   medium → "Scale Color-bodypart Type"       e.g. Lesser Yellow-throated Flycatcher
+//   long   → "Geographic Color-bodypart Type"  e.g. Himalayan Black-crowned Babbler
 const SNEAKY = {
   color:    ['Yellow','Red','Black','White','Blue','Purple','Golden','Rufous','Chestnut',
-             'Olive','Gray','Brown','Tawny','Orange','Cinnamon','Crimson','Indigo','Scarlet',
-             'Buff','Ochre','Slate','Rusty','Sooty','Drab','Fulvous','Vinous','Isabelline'],
+             'Olive','Grey','Brown','Tawny','Orange','Cinnamon','Crimson','Indigo','Scarlet',
+             'Buff','Ochre','Slate','Rusty','Sooty','Fulvous','Vinous','Isabelline',
+             'Pale','Dark','Dusky','Ash','Ferruginous','Lavender','Umber'],
   bodyPart: ['crowned','throated','backed','winged','breasted','bellied','faced','headed',
              'capped','vented','rumped','tailed','billed','footed','cheeked','eared','browed',
-             'fronted','collared','ringed','naped','shouldered','flanked','barred','spotted'],
+             'fronted','collared','naped','shouldered','flanked','ringed','spotted','barred'],
   type:     ['Warbler','Tanager','Finch','Sparrow','Flycatcher','Vireo','Thrush','Wren',
              'Nuthatch','Kingfisher','Hummingbird','Hawk','Dove','Plover','Heron','Bunting',
              'Grosbeak','Swallow','Pipit','Babbler','Sunbird','Honeyeater','Manakin',
              'Trogon','Barbet','Woodpecker','Pitta','Monarch','Fantail','Laughingthrush',
-             'Cisticola','Prinia','Bulbul','White-eye','Flowerpecker','Leafbird'],
-  scale:    ['Lesser','Greater','Common','Northern','Southern','Eastern','Western',
-             'Eurasian','American','African','Asian','Pacific','Mountain','Forest',
-             'Streaked','Plain','Pale','Little','Slender'],
+             'Cisticola','Prinia','Bulbul','White-eye','Flowerpecker','Leafbird',
+             'Chat','Robin','Redstart','Wheatear','Nightjar','Shortwing','Drongo'],
+  scale:    ['Lesser','Greater','Common','Little','Slender','Pale','Plain','Streaked'],
+  geo:      ['Eastern','Western','Northern','Southern','Eurasian','African','Asian',
+             'American','Himalayan','Amazonian','Andean','Sumatran','Bornean',
+             'Mountain','Forest','Highland','Coastal','Island','Desert','Marsh'],
 };
 
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -443,18 +459,14 @@ function generateFakeName() {
       }
     } else { // hard
       if (len === 0) {
-        // "Color-bodypart Type" — core real-bird format
+        // Short: "Color-bodypart Type"  e.g. Rufous-bellied Warbler
         name = `${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
       } else if (len === 1) {
-        // Same format, slightly varied phrasing
-        name = `${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
+        // Medium: "Scale Color-bodypart Type"  e.g. Lesser Yellow-throated Flycatcher
+        name = `${pick(SNEAKY.scale)} ${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
       } else {
-        // "Scale Color-bodypart Type" or "Scale Color Type"
-        if (Math.random() < 0.6) {
-          name = `${pick(SNEAKY.scale)} ${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
-        } else {
-          name = `${pick(SNEAKY.scale)} ${pick(SNEAKY.color)} ${pick(SNEAKY.type)}`;
-        }
+        // Long: "Geographic Color-bodypart Type"  e.g. Himalayan Black-crowned Babbler
+        name = `${pick(SNEAKY.geo)} ${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
       }
     }
     attempts++;
