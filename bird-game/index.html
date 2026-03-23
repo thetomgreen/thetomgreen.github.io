@@ -224,44 +224,41 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
-      padding: 4px 10px 10px;
-      font-size: 0.82rem;
-      color: #8aaa7a;
+      gap: 8px;
+      padding: 0 10px 8px;
+      font-size: 0.72rem;
+      color: #5a7a5a;
     }
 
     .diff-pills {
       display: flex;
-      background: #1e321e;
-      border-radius: 20px;
-      padding: 3px;
       gap: 2px;
     }
 
     .diff-btn {
       background: transparent;
-      border: none;
-      border-radius: 16px;
-      padding: 5px 12px;
-      font-size: 0.78rem;
+      border: 1px solid #2d452d;
+      border-radius: 10px;
+      padding: 3px 9px;
+      font-size: 0.70rem;
       font-weight: 600;
-      color: #6a8a6a;
+      color: #5a7a5a;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
       transition: all 0.15s ease;
     }
 
     .diff-btn.active {
-      background: #3d5a3d;
-      color: #c8e8b8;
+      background: #2d452d;
+      border-color: #3d5a3d;
+      color: #9ab88a;
     }
 
-    .diff-btn:active { transform: scale(0.95); }
+    .diff-btn:active { opacity: 0.7; }
 
     .adaptive-label {
-      font-size: 0.72rem;
-      color: #6a8a6a;
-      min-width: 50px;
+      font-size: 0.68rem;
+      color: #5a7a5a;
     }
   </style>
 </head>
@@ -281,11 +278,11 @@
   <span>Difficulty:</span>
   <div class="diff-pills">
     <button class="diff-btn" data-level="easy" onclick="setDifficulty('easy')">Easy</button>
-    <button class="diff-btn" data-level="medium" onclick="setDifficulty('medium')">Medium</button>
+    <button class="diff-btn" data-level="medium" onclick="setDifficulty('medium')">Med</button>
     <button class="diff-btn" data-level="hard" onclick="setDifficulty('hard')">Hard</button>
     <button class="diff-btn active" data-level="auto" onclick="setDifficulty('auto')">Auto</button>
   </div>
-  <span class="adaptive-label" id="adaptive-label"></span>
+  <span class="adaptive-label" id="adaptive-label">(medium)</span>
 </div>
 
 <div id="game-screen">
