@@ -219,6 +219,50 @@
     }
 
     .streak span { color: #f0c060; font-weight: bold; }
+
+    .difficulty-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 4px 10px 10px;
+      font-size: 0.82rem;
+      color: #8aaa7a;
+    }
+
+    .diff-pills {
+      display: flex;
+      background: #1e321e;
+      border-radius: 20px;
+      padding: 3px;
+      gap: 2px;
+    }
+
+    .diff-btn {
+      background: transparent;
+      border: none;
+      border-radius: 16px;
+      padding: 5px 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #6a8a6a;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: all 0.15s ease;
+    }
+
+    .diff-btn.active {
+      background: #3d5a3d;
+      color: #c8e8b8;
+    }
+
+    .diff-btn:active { transform: scale(0.95); }
+
+    .adaptive-label {
+      font-size: 0.72rem;
+      color: #6a8a6a;
+      min-width: 50px;
+    }
   </style>
 </head>
 <body>
@@ -233,6 +277,17 @@
   <div>Best streak: <span id="best-streak">0</span></div>
 </div>
 
+<div class="difficulty-bar">
+  <span>Difficulty:</span>
+  <div class="diff-pills">
+    <button class="diff-btn" data-level="easy" onclick="setDifficulty('easy')">Easy</button>
+    <button class="diff-btn" data-level="medium" onclick="setDifficulty('medium')">Medium</button>
+    <button class="diff-btn" data-level="hard" onclick="setDifficulty('hard')">Hard</button>
+    <button class="diff-btn active" data-level="auto" onclick="setDifficulty('auto')">Auto</button>
+  </div>
+  <span class="adaptive-label" id="adaptive-label"></span>
+</div>
+
 <div id="game-screen">
   <p class="question">Tap the bird you think is <strong>made up</strong></p>
   <div class="bird-cards" id="bird-cards"></div>
@@ -245,12 +300,58 @@
 </div>
 
 <script>
-// ── Tuning ───────────────────────────────────────────────────────────────────
-// Weights for each fake-name style. Must sum to 1.
-// short  → single compound word, e.g. "Greysnipe", "Marshchat"
-// medium → adjective + compound,  e.g. "Russet Thornwren", "Dusky Bellchat"
-// hard   → hyphenated almost-real, e.g. "Pale-crowned Dustwren", "Lesser Crownfinch"
-const MIX = { short: 0.25, medium: 0.40, hard: 0.35 };
+// ── Difficulty settings ───────────────────────────────────────────────────────
+// Weights for each fake-name style per difficulty level.
+// short  → single compound word, e.g. "Greysnipe", "Marshchat"       (easy to spot)
+// medium → adjective + compound,  e.g. "Russet Thornwren"            (moderate)
+// hard   → hyphenated almost-real, e.g. "Pale-crowned Dustwren"      (hard to spot)
+const DIFFICULTY_MIX = {
+  easy:   { short: 0.70, medium: 0.30, hard: 0.00 },
+  medium: { short: 0.25, medium: 0.40, hard: 0.35 },
+  hard:   { short: 0.00, medium: 0.15, hard: 0.85 },
+};
+
+let selectedDifficulty = 'auto'; // 'easy' | 'medium' | 'hard' | 'auto'
+let adaptiveDifficulty = 'medium';
+let recentResults = [];          // last 5 booleans (true=correct)
+
+function getCurrentMix() {
+  const level = selectedDifficulty === 'auto' ? adaptiveDifficulty : selectedDifficulty;
+  return DIFFICULTY_MIX[level];
+}
+
+function setDifficulty(level) {
+  selectedDifficulty = level;
+  document.querySelectorAll('.diff-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.level === level);
+  });
+  updateAdaptiveLabel();
+}
+
+function updateAdaptiveDifficulty(correct) {
+  recentResults.push(correct);
+  if (recentResults.length > 5) recentResults.shift();
+  if (recentResults.length < 3) return;
+  const last3 = recentResults.slice(-3);
+  const correct3 = last3.filter(Boolean).length;
+  if (correct3 === 3) {
+    if (adaptiveDifficulty === 'easy')   adaptiveDifficulty = 'medium';
+    else if (adaptiveDifficulty === 'medium') adaptiveDifficulty = 'hard';
+  } else if (correct3 <= 1) {
+    if (adaptiveDifficulty === 'hard')   adaptiveDifficulty = 'medium';
+    else if (adaptiveDifficulty === 'medium') adaptiveDifficulty = 'easy';
+  }
+  updateAdaptiveLabel();
+}
+
+function updateAdaptiveLabel() {
+  const el = document.getElementById('adaptive-label');
+  if (selectedDifficulty === 'auto') {
+    el.textContent = `(${adaptiveDifficulty})`;
+  } else {
+    el.textContent = '';
+  }
+}
 
 // ── Fake name parts ──────────────────────────────────────────────────────────
 const FAKE_PARTS = {
@@ -287,6 +388,7 @@ const usedFakeNames = new Set();
 
 function generateFakeName() {
   let name, attempts = 0;
+  const MIX = getCurrentMix();
   do {
     const r = Math.random();
     if (r < MIX.short) {
@@ -464,6 +566,8 @@ async function handleGuess(pickedFake, pickedName) {
   } else {
     streak = 0;
   }
+
+  if (selectedDifficulty === 'auto') updateAdaptiveDifficulty(pickedFake);
 
   document.getElementById('score').textContent = score;
   document.getElementById('best-streak').textContent = bestStreak;
