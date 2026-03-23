@@ -308,7 +308,6 @@
 let selectedDifficulty = 'auto';
 let adaptiveDifficulty = 'medium';
 let recentResults = [];
-let lastFakeStyle = 'auto';
 
 function getStyle() {
   return selectedDifficulty === 'auto' ? adaptiveDifficulty : selectedDifficulty;
@@ -435,7 +434,6 @@ const usedFakeNames = new Set();
 function generateFakeName() {
   let name, attempts = 0;
   const style = getStyle();
-  console.log('[DEBUG] generateFakeName called, style =', style, '| selectedDifficulty =', selectedDifficulty, '| adaptiveDifficulty =', adaptiveDifficulty);
   do {
     const len = Math.floor(Math.random() * 3); // 0=short, 1=medium, 2=long
     if (style === 'easy') {
@@ -459,23 +457,12 @@ function generateFakeName() {
           name = `${pick(PLAUSIBLE.scale)} ${pick(PLAUSIBLE.longHab)}${pick(PLAUSIBLE.longType)}`;
         }
       }
-    } else { // hard
-      if (len === 0) {
-        // Short: "Color-bodypart Type"  e.g. Rufous-bellied Warbler
-        name = `${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
-      } else if (len === 1) {
-        // Medium: "Scale Color-bodypart Type"  e.g. Lesser Yellow-throated Flycatcher
-        name = `${pick(SNEAKY.scale)} ${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
-      } else {
-        // Long: "Geographic Color-bodypart Type"  e.g. Himalayan Black-crowned Babbler
-        name = `${pick(SNEAKY.geo)} ${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
-      }
+    } else { // hard — always "Color-bodypart Type" so it matches the real birds shown
+      name = `${pick(SNEAKY.color)}-${pick(SNEAKY.bodyPart)} ${pick(SNEAKY.type)}`;
     }
     attempts++;
   } while (usedFakeNames.has(name) && attempts < 100);
   usedFakeNames.add(name);
-  console.log('[DEBUG] Generated fake name:', name, '(style:', style + ')');
-  lastFakeStyle = style;
   return name;
 }
 
@@ -628,6 +615,61 @@ const BIRDS = [
     fact: "The male grows tail feathers up to 50cm long — four times its body length — purely for display. Females prefer males with the longest tails so strongly that scientists who tied on fake extensions found those males won dramatically more mates." },
 ];
 
+// ── Hard-mode bird pool ───────────────────────────────────────────────────────
+// All names follow "Color-bodypart Type" so they match the SNEAKY fake generator.
+const HARD_BIRDS = [
+  { name: "Yellow-rumped Warbler",
+    fact: "The most numerous warbler in North America. Unlike most warblers it can digest waxy berries, letting it winter far north of other species. Its rump patch is so distinctive birders just call it 'butter butt.'" },
+  { name: "Black-crowned Night Heron",
+    fact: "Found on every continent except Australia and Antarctica — the world's most widespread heron. It hunts at dusk and night, and its stomach juices are so strong they dissolve fish bones entirely." },
+  { name: "Red-tailed Hawk",
+    fact: "The most common hawk in North America. Despite being everywhere, its screech is almost never heard in nature — Hollywood uses it as the sound effect for every eagle, osprey, and hawk on screen." },
+  { name: "White-throated Sparrow",
+    fact: "Comes in two colour forms — tan-striped and white-striped — that almost always mate with the opposite form. The two morphs differ in personality too: white-striped birds are more aggressive and promiscuous." },
+  { name: "Blue-winged Teal",
+    fact: "One of the earliest-leaving ducks each autumn — it departs for South America weeks before other species. It can detect the pressure drop before a storm and begins flying south immediately, travelling through the night." },
+  { name: "Golden-fronted Woodpecker",
+    fact: "Wedges acorns and grasshoppers into bark crevices to eat later — a behaviour so systematic that researchers have found caches of thousands of items in a single tree. Its golden forehead glows like a coin in sunlight." },
+  { name: "Red-breasted Nuthatch",
+    fact: "Paints sticky resin around the entrance of its nest hole — possibly to deter predators or parasites. It carries the resin in its bill, carefully avoiding the glue itself, and renews it throughout the breeding season." },
+  { name: "Yellow-bellied Sapsucker",
+    fact: "Drills neat rows of small holes to let sap ooze out, then laps it up along with trapped insects. At least 35 other species — including hummingbirds — rely on sapsucker wells as a food source." },
+  { name: "Golden-crowned Kinglet",
+    fact: "One of North America's smallest birds at just 6 grams. It survives winters at -40°C by huddling in groups and shivering continuously through the night to maintain body temperature." },
+  { name: "Black-bellied Plover",
+    fact: "Has a hidden fourth toe that other plovers lack. Its plumage transforms completely between seasons — jet-black below in summer, pale grey in winter — making it look like two different species." },
+  { name: "White-crowned Sparrow",
+    fact: "Has distinct regional dialects: a bird from San Francisco sings a song its cousins in Alaska would not recognise. Young males learn the local dialect within weeks of hatching and sing it for life." },
+  { name: "Chestnut-backed Chickadee",
+    fact: "Hides thousands of individual seeds in separate locations each autumn and can find most of them months later under deep snow. Its hippocampus — the brain's memory centre — grows measurably larger each autumn." },
+  { name: "Rufous-tailed Hummingbird",
+    fact: "The commonest hummingbird in Central America, yet it visits over 150 plant species and acts as the primary pollinator for dozens of them. Males defend flowering trees so fiercely they will chase away birds ten times their size." },
+  { name: "Black-backed Woodpecker",
+    fact: "Specialises in freshly burned forests, arriving within months of a fire. It can apparently detect smoke from dozens of kilometres away. Its sooty-black back camouflages it perfectly against charred tree trunks." },
+  { name: "Olive-backed Sunbird",
+    fact: "Weighs just 6 grams and hovers like a hummingbird, but actually prefers to perch while feeding. The male's throat is a blaze of metallic purple and yellow, visible only in direct sunlight." },
+  { name: "White-bellied Sea Eagle",
+    fact: "Hunts fish, sea snakes, and waterbirds by swooping low over the water and snatching prey in its talons without getting wet. Pairs mate for life and reuse the same nest for decades, adding new sticks each year until it can weigh a tonne." },
+  { name: "Rufous-crowned Sparrow",
+    fact: "A desert specialist of rocky hillsides in the American Southwest. It rarely drinks free water, extracting all the moisture it needs from insects and seeds. It walks rather than hops, creeping mouse-like between boulders." },
+  { name: "Yellow-billed Oxpecker",
+    fact: "Rides large African mammals eating ticks, but also keeps wounds open to drink blood — making it partly parasitic on the very animals it appears to help. Buffalo tolerate it; elephants and rhinos often do not." },
+  { name: "Blue-naped Mousebird",
+    fact: "Hangs upside-down like a bat to roost, packing into tight clusters of up to 20 birds. In cold mornings it basks with wings spread and belly facing the sun, raising its temperature before it can fly." },
+  { name: "Chestnut-sided Warbler",
+    fact: "One of the few bird species to have genuinely benefited from deforestation — it barely existed in Audubon's time but thrived as settlers cleared eastern forests. Males sing two distinct song types: one to attract females, one to warn rivals." },
+  { name: "Red-faced Cormorant",
+    fact: "Found only in the Aleutian Islands and Kamchatka, one of the rarest cormorants in the world. The red face skin becomes brilliantly coloured in breeding season, fading to dull brown for the rest of the year." },
+  { name: "White-winged Crossbill",
+    fact: "Its crossed bill is purpose-built for prying open spruce cones — it inserts the bill, twists, and flicks out the seed in one motion. It wanders nomadically across northern forests following cone crops." },
+  { name: "Black-headed Grosbeak",
+    fact: "One of the few birds that can eat monarch butterflies despite their milkweed toxins. It appears to tolerate the poison by feeding in short bursts, alternating with other food to avoid build-up." },
+  { name: "Yellow-fronted Canary",
+    fact: "Native to sub-Saharan Africa but established as a feral population in Hawaii after cage-bird escapes. Males can mimic the songs of other species mid-song, seamlessly stitching foreign phrases into their own." },
+  { name: "Rufous-bellied Niltava",
+    fact: "A Himalayan forest bird whose male is an electric combination of deep blue above and fiery rufous below. Its colours are so intense it was once called one of the most beautiful birds in Asia by early naturalists." },
+];
+
 // ── Photo fetching ───────────────────────────────────────────────────────────
 async function fetchBirdPhoto(birdName) {
   try {
@@ -649,7 +691,8 @@ async function fetchBirdPhoto(birdName) {
 // ── Game state ───────────────────────────────────────────────────────────────
 let score = 0, streak = 0, bestStreak = 0;
 let currentRound = null, answered = false;
-let birdPool = [];   // shuffled indices, refilled when exhausted
+let birdPool = [];      // shuffled indices for main BIRDS pool
+let hardBirdPool = [];  // shuffled indices for HARD_BIRDS pool
 let photoPromises = [];
 
 function shuffle(arr) {
@@ -662,6 +705,13 @@ function shuffle(arr) {
 }
 
 function pickTwoBirds() {
+  const style = getStyle();
+  if (style === 'hard') {
+    if (hardBirdPool.length < 2) {
+      hardBirdPool = shuffle([...Array(HARD_BIRDS.length).keys()]);
+    }
+    return [HARD_BIRDS[hardBirdPool.pop()], HARD_BIRDS[hardBirdPool.pop()]];
+  }
   if (birdPool.length < 2) {
     birdPool = shuffle([...Array(BIRDS.length).keys()]);
   }
@@ -689,7 +739,7 @@ function startRound() {
     const btn = document.createElement('button');
     btn.className = 'bird-btn';
     btn.dataset.fake = opt.isFake;
-    btn.innerHTML = `<div class="bird-name">${opt.name}</div>${opt.isFake ? `<div style="font-size:0.6rem;opacity:0.5;margin-top:2px">[DEBUG style: ${lastFakeStyle}]</div>` : ''}`;
+    btn.innerHTML = `<div class="bird-name">${opt.name}</div>`;
     btn.onclick = () => handleGuess(opt.isFake, opt.name);
     cards.appendChild(btn);
   });
