@@ -15,22 +15,38 @@
       theme: {
         extend: {
           colors: {
-            "primary-fixed": "#ffdad7",
-            "surface-container-high": "#232a38",
-            "surface-container-lowest": "#070e1b",
-            "primary": "#ffb3ae",
-            "on-primary-container": "#5c0008",
-            "outline-variant": "#5c3f3d",
-            "surface-variant": "#2e3543",
-            "outline": "#ac8885",
-            "surface-container-low": "#151c29",
-            "on-background": "#dce2f5",
-            "on-surface": "#dce2f5",
+            // Override Tailwind's red palette with logo-pink shades so existing
+            // bg-red-*, text-red-*, border-red-* utilities pick up the new accent.
+            red: {
+              50:  "#fdf2f6",
+              100: "#fce7ee",
+              200: "#fbd0dc",
+              300: "#f5a8bd",
+              400: "#ec7393",
+              500: "#d6395e",   // primary accent (logo pink)
+              600: "#c12d50",   // hover / button bg
+              700: "#a02141",   // active / deep
+              800: "#7a1731",
+              900: "#5c0e22"
+            },
+            // Soft warm cream from the logo letterforms — used as a secondary accent
+            "cream":             "#f3e6cf",
+            "primary-fixed":     "#ffdad7",
+            "surface-container-high":     "#232a38",
+            "surface-container-lowest":   "#070e1b",
+            "primary":           "#f5a8bd",   // soft pink for headings on dark
+            "on-primary-container": "#5c0e22",
+            "outline-variant":   "#5c3f3d",
+            "surface-variant":   "#2e3543",
+            "outline":           "#ac8885",
+            "surface-container-low":  "#151c29",
+            "on-background":     "#e6e9f5",
+            "on-surface":        "#e6e9f5",
             "surface-container-highest": "#2e3543",
-            "primary-container": "#ff5352",
-            "background": "#0c1320",
-            "surface": "#0c1320",
-            "on-surface-variant": "#e6bdba",
+            "primary-container": "#d6395e",
+            "background":        "#0c1320",
+            "surface":           "#0c1320",
+            "on-surface-variant": "#cfd5e6",
             "surface-container": "#19202d"
           },
           spacing: {
@@ -63,8 +79,8 @@
       background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
       opacity: 0.05;
     }
-    .hard-shadow    { box-shadow: 6px 6px 0px 0px rgba(230, 43, 52, 0.4); }
-    .hard-shadow-sm { box-shadow: 3px 3px 0px 0px rgba(230, 43, 52, 0.3); }
+    .hard-shadow    { box-shadow: 6px 6px 0px 0px rgba(214, 57, 94, 0.45); }
+    .hard-shadow-sm { box-shadow: 3px 3px 0px 0px rgba(214, 57, 94, 0.35); }
     .organic-blob   { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
     html { scroll-behavior: smooth; scroll-padding-top: 6rem; }
   </style>
@@ -103,10 +119,10 @@
       <div class="absolute inset-0 bg-gradient-to-b from-red-600/10 to-transparent"></div>
       <div class="relative z-10 space-y-8 max-w-5xl">
         <div class="flex justify-center mb-6">
-          <img src="logo.jpeg" alt="The Love Drops logo" class="w-56 md:w-80 rounded-full drop-shadow-[10px_10px_0px_rgba(230,43,52,0.3)]">
+          <img src="logo.jpeg" alt="The Love Drops logo" class="w-56 md:w-80 rounded-full drop-shadow-[10px_10px_0px_rgba(214,57,94,0.35)]">
         </div>
-        <h1 class="font-headline-xl text-on-background [text-shadow:4px_4px_0px_theme(colors.on-primary-container)]">Everyone's in the&nbsp;Band</h1>
-        <p class="font-headline-md italic text-on-surface-variant max-w-2xl mx-auto px-4">A parody singalong band. We rewrite popular songs, you sing along. Wrong notes welcome — they sound great to us.</p>
+        <h1 class="font-headline-xl italic text-on-background tracking-tight leading-[0.92] text-[clamp(3.5rem,12vw,10rem)] [text-shadow:6px_6px_0_#a02141]">Everyone's in the&nbsp;Band</h1>
+        <p class="font-headline-md italic text-on-surface-variant max-w-2xl mx-auto px-4 pt-2">A parody singalong band. We rewrite popular songs, you sing along. Wrong notes welcome — they sound great to us.</p>
         <div class="flex flex-col sm:flex-row gap-5 justify-center pt-4">
           <a href="#about" class="px-10 py-5 bg-red-600 text-primary-fixed font-headline-md italic rounded-lg hard-shadow transition-all active:translate-x-1 active:translate-y-1 active:shadow-none">Read Our Story</a>
           <a href="https://docs.google.com/forms/d/e/1FAIpQLSdpm3evkBFsJKYRJoEUuqOX9FYBnp2mAZtwmtlDBOqjZ0MPvg/viewform" target="_blank" rel="noopener" class="px-10 py-5 border-2 border-red-600 text-pink-100 font-headline-md italic rounded-lg hover:bg-red-600/10 transition-all">Join the Mailing List</a>
@@ -121,7 +137,7 @@
       <div class="max-w-5xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
           <span class="material-symbols-outlined text-red-500 text-4xl">history_edu</span>
-          <h2 class="font-headline-lg text-primary">The Story</h2>
+          <h2 class="font-headline-lg italic text-on-background">The Story</h2>
         </div>
         <div class="space-y-6 font-body-lg text-on-surface-variant leading-relaxed max-w-3xl">
             <p class="first-letter:text-7xl first-letter:font-headline-xl first-letter:mr-3 first-letter:float-left first-letter:text-red-500 first-letter:leading-none">The Love Drops is a parody singalong band. We take songs you already know and rewrite the words — sometimes for a specific event, sometimes because we got hooked on a theme.</p>
@@ -148,7 +164,7 @@
           </div>
         </div>
         <div class="order-1 md:order-2 space-y-8">
-          <h2 class="font-headline-lg text-on-background">What We Believe</h2>
+          <h2 class="font-headline-lg italic text-on-background">What We Believe</h2>
           <div class="space-y-6">
             <div class="flex gap-4">
               <span class="material-symbols-outlined text-red-500 text-3xl shrink-0" style="font-variation-settings: 'FILL' 1;">favorite</span>
@@ -168,7 +184,7 @@
               <span class="material-symbols-outlined text-red-500 text-3xl shrink-0" style="font-variation-settings: 'FILL' 1;">celebration</span>
               <div>
                 <h4 class="font-headline-md text-primary mb-2">Pick a Theme, Run With It</h4>
-                <p class="text-on-surface-variant font-body-md">We've written love songs about composting and a tribute to scam artists. The world's serious enough already.</p>
+                <p class="text-on-surface-variant font-body-md">We've written songs about lots of things — from recycling to why people leave the Bay Area then come back.</p>
               </div>
             </div>
           </div>
@@ -180,7 +196,7 @@
     <section id="mailing-list" class="py-xl px-margin bg-background relative overflow-hidden">
       <div class="max-w-3xl mx-auto text-center space-y-8 relative z-10">
         <span class="material-symbols-outlined text-red-500 text-6xl" style="font-variation-settings: 'FILL' 1;">mark_email_unread</span>
-        <h2 class="font-headline-xl text-on-background">The Mailing List</h2>
+        <h2 class="font-headline-xl italic text-on-background">The Mailing List</h2>
         <p class="font-headline-md italic text-on-surface-variant">Sign up to get new songs, chord sheets, and the occasional what-just-happened email when something fun goes down.</p>
         <a href="https://docs.google.com/forms/d/e/1FAIpQLSdpm3evkBFsJKYRJoEUuqOX9FYBnp2mAZtwmtlDBOqjZ0MPvg/viewform" target="_blank" rel="noopener" class="inline-block px-12 py-6 bg-red-600 text-primary-fixed font-headline-md italic rounded-xl hard-shadow hover:bg-red-700 transition-all active:translate-x-1 active:translate-y-1 active:shadow-none">Join the Mailing List</a>
       </div>
@@ -192,7 +208,7 @@
     <section id="contact" class="py-xl px-margin bg-surface-container-low relative overflow-hidden">
       <div class="max-w-4xl mx-auto text-center space-y-10 relative z-10">
         <div class="space-y-4">
-          <h2 class="font-headline-xl text-on-background">Say Hello</h2>
+          <h2 class="font-headline-xl italic text-on-background">Say Hello</h2>
           <p class="font-headline-md text-primary italic max-w-2xl mx-auto">Want us at your party? Got a song idea? Just want to say hi? Drop a note.</p>
         </div>
         <div class="bg-surface-container-high p-8 md:p-12 rounded-2xl border-2 border-primary/20 hard-shadow">
