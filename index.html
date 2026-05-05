@@ -82,7 +82,6 @@
       <div class="hidden md:flex items-center gap-7">
         <a class="text-pink-100/70 font-bold hover:text-red-400 transition-colors italic uppercase tracking-tight font-headline-md text-base" href="#about">Story</a>
         <a class="text-pink-100/70 font-bold hover:text-red-400 transition-colors italic uppercase tracking-tight font-headline-md text-base" href="#philosophy">Philosophy</a>
-        <a class="text-pink-100/70 font-bold hover:text-red-400 transition-colors italic uppercase tracking-tight font-headline-md text-base" href="#gallery">Gallery</a>
         <a class="text-pink-100/70 font-bold hover:text-red-400 transition-colors italic uppercase tracking-tight font-headline-md text-base" href="#mailing-list">Mailing List</a>
         <a class="px-5 py-2 bg-red-600 text-primary-fixed italic font-black uppercase font-headline-md text-base hover:bg-red-700 transition-all active:translate-y-1" href="#contact">Say Hello</a>
       </div>
@@ -93,7 +92,6 @@
     <div id="mobile-menu" class="hidden md:hidden border-t border-white/10 bg-slate-950 px-6 py-4 space-y-2">
       <a class="block py-2 text-pink-100/70 font-bold italic uppercase font-headline-md" href="#about">Story</a>
       <a class="block py-2 text-pink-100/70 font-bold italic uppercase font-headline-md" href="#philosophy">Philosophy</a>
-      <a class="block py-2 text-pink-100/70 font-bold italic uppercase font-headline-md" href="#gallery">Gallery</a>
       <a class="block py-2 text-pink-100/70 font-bold italic uppercase font-headline-md" href="#mailing-list">Mailing List</a>
       <a class="block py-2 text-red-500 font-bold italic uppercase font-headline-md" href="#contact">Say Hello</a>
     </div>
@@ -125,8 +123,7 @@
           <span class="material-symbols-outlined text-red-500 text-4xl">history_edu</span>
           <h2 class="font-headline-lg text-primary">The Story</h2>
         </div>
-        <div class="grid md:grid-cols-12 gap-12 items-start">
-          <div class="md:col-span-7 space-y-6 font-body-lg text-on-surface-variant leading-relaxed">
+        <div class="space-y-6 font-body-lg text-on-surface-variant leading-relaxed max-w-3xl">
             <p class="first-letter:text-7xl first-letter:font-headline-xl first-letter:mr-3 first-letter:float-left first-letter:text-red-500 first-letter:leading-none">The Love Drops is a parody singalong band. We take songs you already know and rewrite the words — sometimes for a specific event, sometimes because we got hooked on a theme.</p>
             <p>The whole thing is built around one idea: <em>everyone's in the band</em>. There's no "audience". We bring the music and the chord sheets, you bring your voice. We don't care if you think you're singing out of tune — it sounds great to us.</p>
             <div class="p-8 bg-surface-container rounded-xl border border-white/5 hard-shadow-sm">
@@ -135,16 +132,6 @@
             </div>
             <p>We sometimes play parties and festivals. We've never used AI to help write our songs; if we ever do, we'll say so on the song itself.</p>
             <p>It's an open project. If you like a song, take it and use it. Our material is shared under a Creative Commons <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener" class="text-red-400 underline underline-offset-4">BY-NC-SA 4.0</a> license — share freely, remix freely, no commercial use, attribution to The Love Drops. If you do something fun with one, we'd love to hear about it.</p>
-          </div>
-          <div class="md:col-span-5">
-            <div class="md:sticky md:top-32 space-y-6">
-              <div class="bg-slate-950 p-4 rounded-lg hard-shadow transform rotate-3">
-                <!-- PHOTO PLACEHOLDER (band photo 1) -->
-                <div class="aspect-[4/5] rounded bg-gradient-to-br from-red-900/40 to-slate-900 flex items-center justify-center text-pink-100/40 italic font-headline-md">photo coming soon</div>
-                <p class="mt-4 font-headline-md italic text-sm text-center text-on-surface-variant">From a recent singalong.</p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </section>
@@ -184,37 +171,6 @@
                 <p class="text-on-surface-variant font-body-md">We've written love songs about composting and a tribute to scam artists. The world's serious enough already.</p>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- GALLERY -->
-    <section id="gallery" class="py-xl px-margin bg-surface-container-low">
-      <div class="max-w-6xl mx-auto">
-        <div class="text-center mb-12 space-y-3">
-          <h2 class="font-headline-lg text-on-background">Gallery</h2>
-          <p class="font-body-lg text-on-surface-variant italic">A few moments from along the way.</p>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[260px]">
-          <!-- VIDEO TILE (large) -->
-          <div class="md:col-span-2 md:row-span-2 rounded-xl overflow-hidden hard-shadow group bg-slate-950 relative">
-            <!-- VIDEO PLACEHOLDER — replace with <iframe> (YouTube) or <video> tag -->
-            <div class="absolute inset-0 flex flex-col items-center justify-center text-pink-100/60 italic font-headline-md gap-4 bg-gradient-to-br from-red-900/30 to-slate-900">
-              <span class="material-symbols-outlined text-7xl text-red-500" style="font-variation-settings: 'FILL' 1;">play_circle</span>
-              <span>video coming soon</span>
-            </div>
-          </div>
-          <!-- PHOTO TILE 1 -->
-          <div class="rounded-xl overflow-hidden hard-shadow border-4 border-red-600/20 bg-slate-950">
-            <div class="w-full h-full flex items-center justify-center text-pink-100/40 italic font-headline-md bg-gradient-to-br from-red-900/30 to-slate-900">photo coming soon</div>
-          </div>
-          <!-- PHOTO TILE 2 with hover quote overlay -->
-          <div class="rounded-xl overflow-hidden hard-shadow group bg-slate-950 relative">
-            <div class="absolute inset-0 bg-red-600/80 flex items-center justify-center p-6 text-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
-              <p class="font-headline-md text-primary-fixed italic">"Came for the music, stayed because we were too busy singing."</p>
-            </div>
-            <div class="w-full h-full flex items-center justify-center text-pink-100/40 italic font-headline-md bg-gradient-to-br from-slate-900 to-red-900/30">photo coming soon</div>
           </div>
         </div>
       </div>
