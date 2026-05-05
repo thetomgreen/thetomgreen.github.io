@@ -1,127 +1,328 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Love Drops</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Love Drops — Everyone's in the Band</title>
+  <meta name="description" content="The Love Drops is a parody singalong band. We rewrite popular songs and everyone sings along. Wrong notes welcome.">
+  <link rel="icon" type="image/jpeg" href="logo.jpeg">
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600;1,700;1,800&family=Be+Vietnam+Pro:wght@400;500&family=Epilogue:wght@700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary-fixed": "#ffdad7",
+            "surface-container-high": "#232a38",
+            "surface-container-lowest": "#070e1b",
+            "primary": "#ffb3ae",
+            "on-primary-container": "#5c0008",
+            "outline-variant": "#5c3f3d",
+            "surface-variant": "#2e3543",
+            "outline": "#ac8885",
+            "surface-container-low": "#151c29",
+            "on-background": "#dce2f5",
+            "on-surface": "#dce2f5",
+            "surface-container-highest": "#2e3543",
+            "primary-container": "#ff5352",
+            "background": "#0c1320",
+            "surface": "#0c1320",
+            "on-surface-variant": "#e6bdba",
+            "surface-container": "#19202d"
+          },
+          spacing: {
+            "gutter": "24px", "xl": "80px", "margin": "32px",
+            "xs": "4px", "lg": "48px", "base": "8px", "sm": "12px", "md": "24px"
+          },
+          fontFamily: {
+            "label-bold": ["Epilogue"],
+            "body-md": ["Be Vietnam Pro"],
+            "body-lg": ["Be Vietnam Pro"],
+            "headline-md": ["Newsreader"],
+            "headline-lg": ["Newsreader"],
+            "headline-xl": ["Newsreader"]
+          },
+          fontSize: {
+            "label-bold":  ["14px", {"lineHeight": "1.2", "fontWeight": "700"}],
+            "body-md":     ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+            "body-lg":     ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+            "headline-md": ["32px", {"lineHeight": "1.3", "fontWeight": "600"}],
+            "headline-lg": ["48px", {"lineHeight": "1.2", "fontWeight": "700"}],
+            "headline-xl": ["64px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}]
+          }
+        }
+      }
+    };
+  </script>
   <style>
-    body {
-      background: linear-gradient(to bottom right, #fff5f7, #f0faff);
-      color: #2d2d2d;
-      font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
-      line-height: 1.6;
-      margin: 0;
-      padding: 2rem;
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    .grain-texture {
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.05;
     }
-    header {
-      text-align: center;
-    }
-    header img {
-      width: 240px;
-      max-width: 100%;
-      margin-bottom: 1rem;
-    }
-    h1 {
-      font-size: 2.7rem;
-      margin-bottom: 0.3rem;
-    }
-    h2 {
-      font-size: 1.8rem;
-      color: #9d174d;
-      margin-top: 2rem;
-    }
-    p, li {
-      font-size: 1.05rem;
-    }
-    ul {
-      margin: 0 0 1rem 1.5rem;
-    }
-    footer {
-      margin-top: 2rem;
-      text-align: center;
-      font-size: 0.9rem;
-      color: #555;
-    }
-    .platforms a {
-      display: block;
-      margin-bottom: 0.5rem;
-      text-decoration: none;
-      color: #7c3aed;
-      font-weight: 500;
-    }
-    .contact-link {
-      display: block;
-      text-align: center;
-      margin-top: 2.5rem;
-      font-size: 1.1rem;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
-    .button {
-      display: inline-block;
-      background-color: #9d174d;
-      color: white;
-      padding: 0.75rem 1.5rem;
-      text-decoration: none;
-      font-weight: bold;
-      border-radius: 6px;
-      margin-top: 1rem;
-    }
-    .button:hover {
-      background-color: #7a103d;
-    }
+    .hard-shadow    { box-shadow: 6px 6px 0px 0px rgba(230, 43, 52, 0.4); }
+    .hard-shadow-sm { box-shadow: 3px 3px 0px 0px rgba(230, 43, 52, 0.3); }
+    .organic-blob   { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+    html { scroll-behavior: smooth; scroll-padding-top: 6rem; }
   </style>
 </head>
-<body>
-  <header>
-    <img src="logo.jpeg" alt="The Love Drops logo" />
-    <h1>The Love Drops</h1>
-    <p><em>“Everyone’s in the Band”</em></p>
+<body class="bg-background text-on-background font-body-md overflow-x-hidden">
+  <div class="fixed inset-0 grain-texture pointer-events-none z-[100]"></div>
+
+  <!-- HEADER -->
+  <header class="fixed top-0 w-full z-50 border-b border-white/10 bg-slate-950/95 backdrop-blur-md">
+    <nav class="flex justify-between items-center px-6 md:px-8 h-20 md:h-24 max-w-7xl mx-auto">
+      <a href="#top" class="flex items-center gap-3">
+        <img src="logo.jpeg" alt="" class="h-10 w-10 rounded-full object-cover ring-2 ring-red-600">
+        <span class="hidden sm:inline text-xl md:text-2xl font-black text-red-500 italic tracking-tight uppercase font-headline-md">The Love Drops</span>
+      </a>
+      <div class="hidden md:flex items-center gap-7">
+        <a class="text-pink-100/70 font-bold hover:text-red-400 transition-colors italic uppercase tracking-tight font-headline-md text-base" href="#about">Story</a>
+        <a class="text-pink-100/70 font-bold hover:text-red-400 transition-colors italic uppercase tracking-tight font-headline-md text-base" href="#philosophy">Philosophy</a>
+        <a class="text-pink-100/70 font-bold hover:text-red-400 transition-colors italic uppercase tracking-tight font-headline-md text-base" href="#gallery">Gallery</a>
+        <a class="text-pink-100/70 font-bold hover:text-red-400 transition-colors italic uppercase tracking-tight font-headline-md text-base" href="#mailing-list">Mailing List</a>
+        <a class="px-5 py-2 bg-red-600 text-primary-fixed italic font-black uppercase font-headline-md text-base hover:bg-red-700 transition-all active:translate-y-1" href="#contact">Say Hello</a>
+      </div>
+      <button id="menu-btn" class="md:hidden text-red-500" aria-label="Menu">
+        <span class="material-symbols-outlined text-3xl">menu</span>
+      </button>
+    </nav>
+    <div id="mobile-menu" class="hidden md:hidden border-t border-white/10 bg-slate-950 px-6 py-4 space-y-2">
+      <a class="block py-2 text-pink-100/70 font-bold italic uppercase font-headline-md" href="#about">Story</a>
+      <a class="block py-2 text-pink-100/70 font-bold italic uppercase font-headline-md" href="#philosophy">Philosophy</a>
+      <a class="block py-2 text-pink-100/70 font-bold italic uppercase font-headline-md" href="#gallery">Gallery</a>
+      <a class="block py-2 text-pink-100/70 font-bold italic uppercase font-headline-md" href="#mailing-list">Mailing List</a>
+      <a class="block py-2 text-red-500 font-bold italic uppercase font-headline-md" href="#contact">Say Hello</a>
+    </div>
   </header>
-  <main>
-    <section>
-      <h2>About</h2>
-      <p>The Love Drops is a music project. We rewrite and parody existing songs for our own amusement and that of others. It’s a singalong - we invite others to sing with us so everyone’s in the band! Some of our songs are written for specific events and others cover themes we enjoy covering. Sometimes we perform at parties and festivals.</p>
-      <p>We have never used AI to help write our songs. If we ever do, we’ll disclose that in the writers list which appears with each song.</p>
-      <p>This is an open project. If you like our songs, please use ‘em!</p>
-      <h2>Using our songs</h2>
-      <p>We’re delighted for others to use these songs. They are provided under a Creative Commons license which has the following conditions:</p>
-      <ul>
-        <li>They may be freely used and shared with others with attribution to The Love Drops.</li>
-        <li>Commercial use is prohibited.</li>
-        <li>Derivative works are permitted (encouraged, actually!), as long as these are shared under the same Creative Commons license.</li>
-      </ul>
-      <p><strong>We request</strong> (these are friendly requests, not conditions of use):</p>
-      <ul>
-        <li>If you use them, let us know, tell us how it went, and send pics / videos if you can</li>
-        <li>If you make derivative works, share them with us so we can all enjoy your improvements</li>
-        <li>If you write additional songs in a similar style, we’d love to have access to them</li>
-      </ul>
-      <p>If you want to use our songs, you’re welcome to download our song sheets or access the Google Docs. They’re not guaranteed to be 100% correct but they’re at least mostly right. We just ask for your name and email address so we can keep track of who’s interested in this project.</p>
-      <p><strong>Disclaimer:</strong> some (well, most) of our songs contain adult themes and language. They are not suitable for minors and some people may find them offensive. Proceed at your own risk.</p>
-      <p><em>By accessing these materials I confirm I am over 18.</em></p>
-      <p><a class="button" href="https://docs.google.com/forms/d/e/1FAIpQLSdCMKmREXoBVjDEWZnOaMI5KitR6jNvwQ4TXegPjSjJdIi4hQ/viewform" target="_blank">Access Our Songs</a>
-</p>
+
+  <main id="top" class="relative pt-20 md:pt-24">
+    <!-- HERO -->
+    <section class="relative min-h-[85vh] flex flex-col items-center justify-center px-margin text-center overflow-hidden">
+      <div class="absolute inset-0 bg-gradient-to-b from-red-600/10 to-transparent"></div>
+      <div class="relative z-10 space-y-8 max-w-5xl">
+        <div class="flex justify-center mb-6">
+          <img src="logo.jpeg" alt="The Love Drops logo" class="w-56 md:w-80 rounded-full drop-shadow-[10px_10px_0px_rgba(230,43,52,0.3)]">
+        </div>
+        <h1 class="font-headline-xl text-on-background [text-shadow:4px_4px_0px_theme(colors.on-primary-container)]">Everyone's in the&nbsp;Band</h1>
+        <p class="font-headline-md italic text-on-surface-variant max-w-2xl mx-auto px-4">A parody singalong band. We rewrite popular songs, you sing along. Wrong notes welcome — they sound great to us.</p>
+        <div class="flex flex-col sm:flex-row gap-5 justify-center pt-4">
+          <a href="#about" class="px-10 py-5 bg-red-600 text-primary-fixed font-headline-md italic rounded-lg hard-shadow transition-all active:translate-x-1 active:translate-y-1 active:shadow-none">Read Our Story</a>
+          <a href="https://docs.google.com/forms/d/e/1FAIpQLSdpm3evkBFsJKYRJoEUuqOX9FYBnp2mAZtwmtlDBOqjZ0MPvg/viewform" target="_blank" rel="noopener" class="px-10 py-5 border-2 border-red-600 text-pink-100 font-headline-md italic rounded-lg hover:bg-red-600/10 transition-all">Join the Mailing List</a>
+        </div>
+      </div>
+      <div class="absolute -bottom-12 -left-12 w-64 h-64 bg-red-600/20 organic-blob blur-3xl pointer-events-none"></div>
+      <div class="absolute top-1/4 -right-12 w-48 h-48 bg-pink-300/10 organic-blob blur-2xl pointer-events-none"></div>
     </section>
 
-    <section>
-      <h2>Don’t be a Stranger 🙂</h2>
-      <p>We’d always love to hear from you. Please don’t hesitate to be in touch. Shoot us an email through the contact form and/or follow us on your favorite platform, where we go by ThirdEyeRoll:</p>
-      <div class="platforms">
-        <a href="https://www.instagram.com/thirdeyeroll?igsh=MWgzNmtqMHYzYnBsZg%3D%3D&utm_source=qr" target="_blank">Instagram</a>
-        <a href="https://on.soundcloud.com/myznmh1VYL29S5HmTb" target="_blank">Soundcloud</a>
-        <a href="https://open.spotify.com/artist/16Uhc1I720KzCh3bDmLXRP?si=QPCEk1SYSxiLcp3GxnyXaA" target="_blank">Spotify</a>
-        <a href="https://youtube.com/@thirdeyeroll-music?si=np21CCMTNIEbWjr-" target="_blank">YouTube</a>
+    <!-- STORY -->
+    <section id="about" class="py-xl px-margin bg-surface-container-low relative">
+      <div class="max-w-5xl mx-auto">
+        <div class="flex items-center gap-4 mb-8">
+          <span class="material-symbols-outlined text-red-500 text-4xl">history_edu</span>
+          <h2 class="font-headline-lg text-primary">The Story</h2>
+        </div>
+        <div class="grid md:grid-cols-12 gap-12 items-start">
+          <div class="md:col-span-7 space-y-6 font-body-lg text-on-surface-variant leading-relaxed">
+            <p class="first-letter:text-7xl first-letter:font-headline-xl first-letter:mr-3 first-letter:float-left first-letter:text-red-500 first-letter:leading-none">The Love Drops is a parody singalong band. We take songs you already know and rewrite the words — sometimes for a specific event, sometimes because we got hooked on a theme.</p>
+            <p>The whole thing is built around one idea: <em>everyone's in the band</em>. There's no "audience". We bring the music and the chord sheets, you bring your voice. We don't care if you think you're singing out of tune — it sounds great to us.</p>
+            <div class="p-8 bg-surface-container rounded-xl border border-white/5 hard-shadow-sm">
+              <p class="italic font-headline-md text-on-surface">"If you're hitting every note, you're not really singing along."</p>
+              <span class="block mt-4 text-primary font-bold not-italic font-body-md text-base">— The Love Drops</span>
+            </div>
+            <p>We sometimes play parties and festivals. We've never used AI to help write our songs; if we ever do, we'll say so on the song itself.</p>
+            <p>It's an open project. If you like a song, take it and use it. Our material is shared under a Creative Commons <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener" class="text-red-400 underline underline-offset-4">BY-NC-SA 4.0</a> license — share freely, remix freely, no commercial use, attribution to The Love Drops. If you do something fun with one, we'd love to hear about it.</p>
+          </div>
+          <div class="md:col-span-5">
+            <div class="md:sticky md:top-32 space-y-6">
+              <div class="bg-slate-950 p-4 rounded-lg hard-shadow transform rotate-3">
+                <!-- PHOTO PLACEHOLDER (band photo 1) -->
+                <div class="aspect-[4/5] rounded bg-gradient-to-br from-red-900/40 to-slate-900 flex items-center justify-center text-pink-100/40 italic font-headline-md">photo coming soon</div>
+                <p class="mt-4 font-headline-md italic text-sm text-center text-on-surface-variant">From a recent singalong.</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
-    <a href="contact.html" class="contact-link">Contact Us</a>
+    <!-- PHILOSOPHY -->
+    <section id="philosophy" class="py-xl px-margin bg-background">
+      <div class="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+        <div class="order-2 md:order-1">
+          <div class="relative w-full aspect-square max-w-md mx-auto">
+            <div class="absolute inset-0 bg-red-600 organic-blob opacity-20 animate-pulse"></div>
+            <div class="absolute inset-4 border-2 border-primary-fixed organic-blob flex items-center justify-center p-12 text-center">
+              <h3 class="font-headline-lg text-primary-fixed">EVERYONE'S<br>IN THE<br>BAND</h3>
+            </div>
+          </div>
+        </div>
+        <div class="order-1 md:order-2 space-y-8">
+          <h2 class="font-headline-lg text-on-background">What We Believe</h2>
+          <div class="space-y-6">
+            <div class="flex gap-4">
+              <span class="material-symbols-outlined text-red-500 text-3xl shrink-0" style="font-variation-settings: 'FILL' 1;">favorite</span>
+              <div>
+                <h4 class="font-headline-md text-primary mb-2">Perfection is Boring</h4>
+                <p class="text-on-surface-variant font-body-md">Cracked notes, forgotten lyrics, the off-key chorus that somehow still slaps — that's the good stuff.</p>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <span class="material-symbols-outlined text-red-500 text-3xl shrink-0" style="font-variation-settings: 'FILL' 1;">groups</span>
+              <div>
+                <h4 class="font-headline-md text-primary mb-2">No Stage, No Audience</h4>
+                <p class="text-on-surface-variant font-body-md">Just a room full of people singing. Some of them have instruments. All of them are in the band.</p>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <span class="material-symbols-outlined text-red-500 text-3xl shrink-0" style="font-variation-settings: 'FILL' 1;">celebration</span>
+              <div>
+                <h4 class="font-headline-md text-primary mb-2">Pick a Theme, Run With It</h4>
+                <p class="text-on-surface-variant font-body-md">We've written love songs about composting and a tribute to scam artists. The world's serious enough already.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <footer>
-      <p>The Love Drops Songs © 2025 by The Love Drops is licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International</a>.</p>
-    </footer>
+    <!-- GALLERY -->
+    <section id="gallery" class="py-xl px-margin bg-surface-container-low">
+      <div class="max-w-6xl mx-auto">
+        <div class="text-center mb-12 space-y-3">
+          <h2 class="font-headline-lg text-on-background">Gallery</h2>
+          <p class="font-body-lg text-on-surface-variant italic">A few moments from along the way.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[260px]">
+          <!-- VIDEO TILE (large) -->
+          <div class="md:col-span-2 md:row-span-2 rounded-xl overflow-hidden hard-shadow group bg-slate-950 relative">
+            <!-- VIDEO PLACEHOLDER — replace with <iframe> (YouTube) or <video> tag -->
+            <div class="absolute inset-0 flex flex-col items-center justify-center text-pink-100/60 italic font-headline-md gap-4 bg-gradient-to-br from-red-900/30 to-slate-900">
+              <span class="material-symbols-outlined text-7xl text-red-500" style="font-variation-settings: 'FILL' 1;">play_circle</span>
+              <span>video coming soon</span>
+            </div>
+          </div>
+          <!-- PHOTO TILE 1 -->
+          <div class="rounded-xl overflow-hidden hard-shadow border-4 border-red-600/20 bg-slate-950">
+            <div class="w-full h-full flex items-center justify-center text-pink-100/40 italic font-headline-md bg-gradient-to-br from-red-900/30 to-slate-900">photo coming soon</div>
+          </div>
+          <!-- PHOTO TILE 2 with hover quote overlay -->
+          <div class="rounded-xl overflow-hidden hard-shadow group bg-slate-950 relative">
+            <div class="absolute inset-0 bg-red-600/80 flex items-center justify-center p-6 text-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
+              <p class="font-headline-md text-primary-fixed italic">"Came for the music, stayed because we were too busy singing."</p>
+            </div>
+            <div class="w-full h-full flex items-center justify-center text-pink-100/40 italic font-headline-md bg-gradient-to-br from-slate-900 to-red-900/30">photo coming soon</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAILING LIST -->
+    <section id="mailing-list" class="py-xl px-margin bg-background relative overflow-hidden">
+      <div class="max-w-3xl mx-auto text-center space-y-8 relative z-10">
+        <span class="material-symbols-outlined text-red-500 text-6xl" style="font-variation-settings: 'FILL' 1;">mark_email_unread</span>
+        <h2 class="font-headline-xl text-on-background">The Mailing List</h2>
+        <p class="font-headline-md italic text-on-surface-variant">Sign up to get new songs, chord sheets, and the occasional what-just-happened email when something fun goes down.</p>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSdpm3evkBFsJKYRJoEUuqOX9FYBnp2mAZtwmtlDBOqjZ0MPvg/viewform" target="_blank" rel="noopener" class="inline-block px-12 py-6 bg-red-600 text-primary-fixed font-headline-md italic rounded-xl hard-shadow hover:bg-red-700 transition-all active:translate-x-1 active:translate-y-1 active:shadow-none">Join the Mailing List</a>
+      </div>
+      <span class="material-symbols-outlined absolute top-12 left-12 text-primary/10 text-9xl rotate-12 pointer-events-none hidden md:block" style="font-variation-settings: 'FILL' 1;">music_note</span>
+      <span class="material-symbols-outlined absolute bottom-12 right-12 text-primary/10 text-9xl -rotate-12 pointer-events-none hidden md:block" style="font-variation-settings: 'FILL' 1;">queue_music</span>
+    </section>
+
+    <!-- CONTACT -->
+    <section id="contact" class="py-xl px-margin bg-surface-container-low relative overflow-hidden">
+      <div class="max-w-4xl mx-auto text-center space-y-10 relative z-10">
+        <div class="space-y-4">
+          <h2 class="font-headline-xl text-on-background">Say Hello</h2>
+          <p class="font-headline-md text-primary italic max-w-2xl mx-auto">Want us at your party? Got a song idea? Just want to say hi? Drop a note.</p>
+        </div>
+        <div class="bg-surface-container-high p-8 md:p-12 rounded-2xl border-2 border-primary/20 hard-shadow">
+          <form id="contact-form" action="https://formspree.io/f/mgvyloko" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+            <div class="space-y-2">
+              <label for="name" class="block font-label-bold text-primary-fixed uppercase tracking-wider">Your Name</label>
+              <input id="name" name="name" type="text" required class="w-full bg-slate-950 border-2 border-outline-variant rounded-lg p-4 text-on-surface focus:border-red-600 focus:ring-0 outline-none transition-all" placeholder="Honorary band member">
+            </div>
+            <div class="space-y-2">
+              <label for="email" class="block font-label-bold text-primary-fixed uppercase tracking-wider">Email</label>
+              <input id="email" name="_replyto" type="email" required class="w-full bg-slate-950 border-2 border-outline-variant rounded-lg p-4 text-on-surface focus:border-red-600 focus:ring-0 outline-none transition-all" placeholder="you@somewhere.com">
+            </div>
+            <div class="md:col-span-2 space-y-2">
+              <label for="message" class="block font-label-bold text-primary-fixed uppercase tracking-wider">Message</label>
+              <textarea id="message" name="message" rows="5" required class="w-full bg-slate-950 border-2 border-outline-variant rounded-lg p-4 text-on-surface focus:border-red-600 focus:ring-0 outline-none transition-all" placeholder="Say whatever you like."></textarea>
+            </div>
+            <div class="md:col-span-2 pt-2">
+              <button type="submit" class="w-full py-5 bg-red-600 text-primary-fixed font-headline-md italic rounded-xl hover:bg-red-700 transition-all hard-shadow active:translate-y-1 active:shadow-none">Send</button>
+              <div id="form-status" class="mt-4 text-center font-body-md min-h-[1.5rem]"></div>
+            </div>
+          </form>
+        </div>
+        <p class="font-body-md text-on-surface-variant">Or just email <a href="mailto:thelovedropsband@gmail.com" class="text-red-400 underline underline-offset-4">thelovedropsband@gmail.com</a> directly.</p>
+      </div>
+      <span class="material-symbols-outlined absolute top-20 left-20 text-primary/10 text-9xl rotate-12 pointer-events-none hidden md:block" style="font-variation-settings: 'FILL' 1;">music_note</span>
+      <span class="material-symbols-outlined absolute bottom-20 right-20 text-primary/10 text-9xl -rotate-12 pointer-events-none hidden md:block" style="font-variation-settings: 'FILL' 1;">volume_up</span>
+    </section>
   </main>
+
+  <!-- FOOTER -->
+  <footer class="border-t-2 border-red-600 pt-12 pb-8 bg-slate-950">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center px-8 gap-6 text-center md:text-left">
+      <div class="flex flex-col items-center md:items-start gap-2">
+        <span class="text-xl font-bold text-pink-100 font-headline-md italic uppercase tracking-widest">The Love Drops</span>
+        <p class="font-headline-md text-sm tracking-widest uppercase text-pink-100/50 italic">Songs &copy; 2026 The Love Drops &middot; <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener" class="underline underline-offset-4 hover:text-red-400">CC BY-NC-SA 4.0</a></p>
+      </div>
+      <div class="flex gap-5 items-center">
+        <a href="https://www.instagram.com/thirdeyeroll" target="_blank" rel="noopener" aria-label="Instagram" class="text-red-500 hover:text-primary transition-colors"><span class="material-symbols-outlined" style="font-size:28px;">photo_camera</span></a>
+        <a href="https://on.soundcloud.com/myznmh1VYL29S5HmTb" target="_blank" rel="noopener" aria-label="Soundcloud" class="text-red-500 hover:text-primary transition-colors"><span class="material-symbols-outlined" style="font-size:28px;">cloud</span></a>
+        <a href="https://open.spotify.com/artist/16Uhc1I720KzCh3bDmLXRP" target="_blank" rel="noopener" aria-label="Spotify" class="text-red-500 hover:text-primary transition-colors"><span class="material-symbols-outlined" style="font-size:28px;">graphic_eq</span></a>
+        <a href="https://youtube.com/@thirdeyeroll-music" target="_blank" rel="noopener" aria-label="YouTube" class="text-red-500 hover:text-primary transition-colors"><span class="material-symbols-outlined" style="font-size:28px;">smart_display</span></a>
+        <a href="mailto:thelovedropsband@gmail.com" aria-label="Email" class="text-red-500 hover:text-primary transition-colors"><span class="material-symbols-outlined" style="font-size:28px;">mail</span></a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- FAB -->
+  <a href="#mailing-list" class="hidden sm:flex fixed bottom-6 right-6 z-[60] items-center gap-3 bg-red-600 text-primary-fixed px-5 py-3 rounded-full font-label-bold hard-shadow hover:-translate-y-1 transition-all">
+    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">mic</span>
+    <span class="uppercase tracking-widest text-sm">Join the Band</span>
+  </a>
+
+  <script>
+    document.getElementById('menu-btn').addEventListener('click', () => {
+      document.getElementById('mobile-menu').classList.toggle('hidden');
+    });
+    document.querySelectorAll('#mobile-menu a').forEach(a => a.addEventListener('click', () => {
+      document.getElementById('mobile-menu').classList.add('hidden');
+    }));
+
+    const form = document.getElementById('contact-form');
+    const status = document.getElementById('form-status');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status.textContent = 'Sending…';
+      status.className = 'mt-4 text-center font-body-md text-on-surface-variant min-h-[1.5rem]';
+      try {
+        const res = await fetch(form.action, {
+          method: 'POST',
+          body: new FormData(form),
+          headers: { Accept: 'application/json' }
+        });
+        if (res.ok) {
+          form.reset();
+          status.textContent = "Thanks! We'll be in touch.";
+          status.className = 'mt-4 text-center font-body-md text-green-400 min-h-[1.5rem]';
+        } else {
+          const data = await res.json().catch(() => ({}));
+          status.textContent = data.error || 'Something went wrong. Try emailing us directly.';
+          status.className = 'mt-4 text-center font-body-md text-red-400 min-h-[1.5rem]';
+        }
+      } catch {
+        status.textContent = 'Network error. Try emailing us directly.';
+        status.className = 'mt-4 text-center font-body-md text-red-400 min-h-[1.5rem]';
+      }
+    });
+  </script>
 </body>
 </html>
