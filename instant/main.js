@@ -157,8 +157,21 @@
   let serverInPlay = false;
   let serverScrollFraction = null;     // non-null only when out of play mode
   let lastTickAt = 0;                  // performance.now() of last server tick
-  let displayedElapsed = 0;            // slewed value driving scroll position
   let renderedSongRawText = null;      // re-render only when this changes
+  /// Line-anchor positions in the rendered DOM. One entry per host-side
+  /// rawText line. centerY = the y coordinate to put under the viewport
+  /// center when "currently on this line". height = used for sub-line
+  /// fraction interpolation. Recomputed after every renderSong/renderList
+  /// and on viewport resize / font-size change.
+  let lineAnchors = [];
+  /// Position the audience is "looking at" in line-float units (e.g. 12.4
+  /// = 40% of the way past line 12 toward line 13). Slews toward
+  /// `targetLineFloat` on each frame; snapped on song change.
+  let displayedLineFloat = 0;
+  /// If true, the next frame snaps displayedLineFloat to the target instead
+  /// of slewing. Set on initial load and on song switch so a freshly-arrived
+  /// viewer doesn't start at the top and slowly catch up.
+  let needSnap = true;
 
   // -------------------------------------------------------------------
   // Supabase client + subscriptions
@@ -219,9 +232,14 @@
         $body.dataset.mode = 'song';
       }
       renderedSongRawText = data.song_raw_text || '';
-      displayedElapsed = serverElapsed;
-      // Reset scroll on view switch.
-      requestAnimationFrame(() => $scroll.scrollTo({ top: 0, behavior: 'auto' }));
+      // Re-measure DOM line positions and snap to the host's current
+      // line on next frame (rather than starting at top and slewing
+      // there — which made joining mid-song feel like the page was
+      // "racing to catch up").
+      requestAnimationFrame(() => {
+        rebuildLineAnchors();
+        needSnap = true;
+      });
     }
     // Show/hide the chord toggle — pointless in list mode.
     $toggle.style.visibility = isList ? 'hidden' : 'visible';
@@ -313,15 +331,99 @@
     return (chords > 0 && chords >= extras) ? 'chords' : 'lyrics';
   }
 
+  /** Tokenise a chord line into [{col, text}] preserving column positions.
+   *  Used by renderChordLyricPair so the rendered chord-over-syllable
+   *  alignment matches the host's source spacing. */
+  function tokenizeChordLineFull(line) {
+    const out = [];
+    let i = 0;
+    while (i < line.length) {
+      if (line[i] === ' ' || line[i] === '\t') { i++; continue; }
+      if (line[i] === '(') {
+        const start = i;
+        while (i < line.length && line[i] !== ')') i++;
+        if (i < line.length) i++;
+        while (i < line.length && line[i] !== ' ' && line[i] !== '\t') i++;
+        out.push({ col: start, text: line.slice(start, i) });
+        continue;
+      }
+      const start = i;
+      while (i < line.length && line[i] !== ' ' && line[i] !== '\t') i++;
+      out.push({ col: start, text: line.slice(start, i) });
+    }
+    return out;
+  }
+
+  /** Render a chord+lyric pair as a single block of inline syllables.
+   *  Each syllable holds its chord absolutely-positioned above; when the
+   *  lyric wraps, the chord wraps with it — same approach the iOS
+   *  ChordLyricWrapper uses to keep chord-over-syllable alignment intact
+   *  under narrow-window reflow. */
+  function renderChordLyricPair(chordRaw, lyricRaw) {
+    const pair = document.createElement('div');
+    pair.className = 'line chord-pair';
+    const tokens = tokenizeChordLineFull(chordRaw);
+    tokens.sort((a, b) => a.col - b.col);
+
+    const makeSyl = (chordText, lyricText) => {
+      const syl = document.createElement('span');
+      syl.className = 'syl';
+      if (chordText) {
+        const ch = document.createElement('span');
+        ch.className = 'syl-chord';
+        ch.textContent = chordText;
+        syl.appendChild(ch);
+      }
+      const ly = document.createElement('span');
+      ly.className = 'syl-lyric';
+      // Need a non-breaking space so a syllable with no lyric text still
+      // has width to anchor its chord (trailing chord beyond end of lyric).
+      ly.textContent = lyricText.length > 0 ? lyricText : ' ';
+      syl.appendChild(ly);
+      return syl;
+    };
+
+    if (tokens.length === 0) {
+      pair.appendChild(makeSyl('', lyricRaw));
+      return pair;
+    }
+    if (tokens[0].col > 0) {
+      pair.appendChild(makeSyl('', lyricRaw.substring(0, tokens[0].col)));
+    }
+    for (let k = 0; k < tokens.length; k++) {
+      const tok = tokens[k];
+      const next = tokens[k + 1];
+      const endCol = next ? next.col : Math.max(lyricRaw.length, tok.col + tok.text.length);
+      const sub = lyricRaw.substring(tok.col, endCol);
+      pair.appendChild(makeSyl(tok.text, sub));
+    }
+    return pair;
+  }
+
   function renderSong(rawText) {
-    const lines = rawText.split('\n');
+    const rawLines = rawText.split('\n');
+    const parsed = rawLines.map(raw => ({ raw, kind: classify(raw) }));
     const frag = document.createDocumentFragment();
-    for (const raw of lines) {
-      const kind = classify(raw);
-      const div = document.createElement('div');
-      div.className = 'line ' + kind;
-      div.textContent = kind === 'blank' ? ' ' : raw;
-      frag.appendChild(div);
+    let i = 0;
+    while (i < parsed.length) {
+      const cur = parsed[i];
+      const next = parsed[i + 1];
+      // Pair a chord line with the lyric line immediately under it.
+      if (cur.kind === 'chords' && next && next.kind === 'lyrics') {
+        const pair = renderChordLyricPair(cur.raw, next.raw);
+        pair.dataset.rawLineStart = String(i);
+        pair.dataset.rawLineEnd = String(i + 1);
+        frag.appendChild(pair);
+        i += 2;
+      } else {
+        const div = document.createElement('div');
+        div.className = 'line ' + cur.kind;
+        div.dataset.rawLineStart = String(i);
+        div.dataset.rawLineEnd = String(i);
+        div.textContent = cur.kind === 'blank' ? ' ' : cur.raw;
+        frag.appendChild(div);
+        i += 1;
+      }
     }
     $body.replaceChildren(frag);
   }
@@ -354,81 +456,155 @@
   }
 
   // -------------------------------------------------------------------
-  // Scroll loop — convert displayedElapsed into scrollTop
+  // Scroll loop — line-anchored scroll
   // -------------------------------------------------------------------
+  //
+  // What "where am I in the song" means:
+  //   - In play mode (host is playing): convert elapsed → progress fraction
+  //     of the song's duration → line index float. The audience always
+  //     centres the same raw-line as the host, regardless of font-size
+  //     differences. Smooth between ~3 Hz ticks via local extrapolation.
+  //   - In scroll mode (host hand-scrolling out of play): the host sends
+  //     a 0..1 scroll fraction; we treat it as a progress fraction over
+  //     the line count.
+  //   - When the host has neither a playing position nor a scroll
+  //     update (paused, just opened a song, etc.): hold the current
+  //     position. NEVER auto-scroll based on stale state.
+  //
+  // Line anchors: every .line/.list-item gets measured once after each
+  // render, giving us each line's centre y and height in the rendered
+  // DOM. We interpolate between anchors to handle sub-line positions.
+
+  /// Rebuild lineAnchors from the current DOM. Each entry covers one host-
+  /// side raw-line index range (rawLineStart..rawLineEnd inclusive); a
+  /// chord-pair DOM block covers two host lines so we double-count it for
+  /// alignment. anchor.centerY is the y position to put under viewport
+  /// center when the audience is on that line.
+  function rebuildLineAnchors() {
+    lineAnchors = [];
+    const elems = $body.querySelectorAll('[data-raw-line-start]');
+    if (elems.length === 0) return;
+    elems.forEach(el => {
+      const start = parseInt(el.dataset.rawLineStart, 10);
+      const endL  = parseInt(el.dataset.rawLineEnd, 10);
+      const top = el.offsetTop;
+      const height = el.offsetHeight;
+      // Distribute the block's vertical extent across however many host
+      // lines it represents, so a chord-pair (2 host lines) gives 2
+      // distinct anchor centers spaced across its height.
+      const count = (endL - start + 1);
+      const sub = height / count;
+      for (let k = 0; k < count; k++) {
+        lineAnchors[start + k] = { centerY: top + sub * (k + 0.5), height: sub };
+      }
+    });
+    // Fill any gaps (defensive) with the last valid anchor.
+    let last = lineAnchors.find(Boolean);
+    for (let i = 0; i < lineAnchors.length; i++) {
+      if (!lineAnchors[i]) lineAnchors[i] = last;
+      else last = lineAnchors[i];
+    }
+  }
+
+  window.addEventListener('resize', () => {
+    // Recompute on viewport size change so wrap reflow doesn't desync.
+    rebuildLineAnchors();
+  });
+  // Recompute also when the user toggles chords / zooms — both change the
+  // layout. Use a ResizeObserver on the body for completeness.
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => rebuildLineAnchors()).observe($body);
+  }
+
+  /// Convert a line-float index to a target scrollTop that puts that line
+  /// at the viewport centre.
+  function lineFloatToScrollTop(lf) {
+    if (lineAnchors.length === 0) return 0;
+    const i = Math.max(0, Math.min(lineAnchors.length - 1, Math.floor(lf)));
+    const frac = Math.max(0, Math.min(1, lf - i));
+    const a = lineAnchors[i];
+    const b = lineAnchors[i + 1] || a;
+    const centerY = a.centerY * (1 - frac) + b.centerY * frac;
+    const viewportH = $scroll.clientHeight;
+    return Math.max(0, centerY - viewportH / 2);
+  }
+
+  /// Compute the host's current line-float position from server state.
+  /// Returns null when there's nothing meaningful to point at (host paused
+  /// and hasn't reported a scroll position).
+  function targetLineFloat(now) {
+    const lineCount = lineAnchors.length;
+    if (lineCount === 0) return null;
+    const songDur = Math.max(0.0001, (row && row.length_seconds) || 0);
+    if (serverInPlay && songDur > 0) {
+      // Time-based: extrapolate elapsed forward if playing, hold if paused.
+      const sinceTick = (now - lastTickAt) / 1000;
+      const live = serverPlaying ? serverElapsed + sinceTick : serverElapsed;
+      const tAfter = Math.max(0, live - LEAD_IN_SEC);
+      const dur = Math.max(0.0001, songDur - LEAD_IN_SEC);
+      const progress = Math.max(0, Math.min(1, tAfter / dur));
+      return progress * (lineCount - 1);
+    }
+    if (serverScrollFraction !== null) {
+      const f = Math.max(0, Math.min(1, serverScrollFraction));
+      return f * (lineCount - 1);
+    }
+    return null;
+  }
+
   let lastFrameAt = performance.now();
 
   function loop(now) {
     const dt = Math.min(0.1, (now - lastFrameAt) / 1000);  // cap dt for tab-sleep recovery
     lastFrameAt = now;
+    requestAnimationFrame(loop);
 
-    if (!row) {
-      requestAnimationFrame(loop);
+    if (!row) return;
+    if ($body.dataset.mode === 'list') return;
+    if (lineAnchors.length === 0) return;
+
+    const target = targetLineFloat(now);
+    if (target === null) {
+      // Nothing to follow — hold whatever position we're at.
       return;
     }
-    // In list mode the audience just sees a static list — no playback,
-    // no elapsed-driven scroll. Skip the slew math entirely; the viewer
-    // is free to scroll manually within the list.
-    if ($body.dataset.mode === 'list') {
-      requestAnimationFrame(loop);
-      return;
-    }
 
-    // Compute server's "live" elapsed estimate. While serverPlaying, the
-    // server's elapsed advances at 1× even between ticks; we extrapolate
-    // locally so motion is smooth at 60 fps despite ~3 Hz ticks.
-    const sinceTick = (now - lastTickAt) / 1000;
-    const liveServerElapsed = serverPlaying
-      ? serverElapsed + sinceTick
-      : serverElapsed;
-
-    // Slew displayedElapsed toward liveServerElapsed.
-    const target = liveServerElapsed;
-    const delta = target - displayedElapsed;
-    if (Math.abs(delta) > SNAP_THRESHOLD_SEC) {
-      displayedElapsed = target;          // big jump → snap
+    if (needSnap) {
+      displayedLineFloat = target;
+      needSnap = false;
     } else {
-      // Max change per frame in seconds = (viewport fraction per sec) × (visible time per viewport).
-      // visibleTimePerViewport ≈ viewport height / scroll speed; we approximate by capping
-      // the rate at a fraction of the song length-per-second.
-      const songDur = Math.max(30, row.length_seconds || 180);
-      const maxStep = (SLEW_VIEWPORT_FRACTION_PER_SEC * songDur * 0.5) * dt;
-      const step = delta >= 0 ? Math.min(delta, maxStep) : Math.max(delta, -maxStep);
-      displayedElapsed += step;
+      const delta = target - displayedLineFloat;
+      // Snap rather than slew when the gap is large (seek, song switch,
+      // late join). The slew is for "follow at natural speed within a
+      // line or two of the host"; bigger jumps need to land immediately.
+      if (Math.abs(delta) > 4) {
+        displayedLineFloat = target;
+      } else {
+        // Max lines per second the slew can close at. Big enough to catch
+        // up after a small drift but capped so the page never feels like
+        // it's racing. Roughly 2× the natural song-line speed.
+        const linesPerSec = lineAnchors.length / Math.max(30, row.length_seconds || 180);
+        const maxStep = linesPerSec * 4 * dt;
+        const step = delta >= 0 ? Math.min(delta, maxStep) : Math.max(delta, -maxStep);
+        displayedLineFloat += step;
+      }
     }
 
-    // Convert to scrollTop.
-    const scrollMax = Math.max(0, $body.scrollHeight - $scroll.clientHeight + window.innerHeight * 0.8);
-    const songDur = Math.max(30, row.length_seconds || 180);
-    let targetTop;
-    if (!serverInPlay && serverScrollFraction !== null) {
-      // Out-of-play-mode: server tells us a 0..1 scroll fraction.
-      targetTop = scrollMax * Math.max(0, Math.min(1, serverScrollFraction));
-    } else {
-      // Play mode: time → position curve. Use constant tempo (v1) — the
-      // tempo_acceleration field is available on the row for a future
-      // iteration that wants to match the curved iOS player exactly.
-      const tAfterLeadIn = Math.max(0, displayedElapsed - LEAD_IN_SEC);
-      const dur = Math.max(0.0001, songDur - LEAD_IN_SEC);
-      targetTop = scrollMax * Math.min(1, tAfterLeadIn / dur);
-    }
-
-    // Slew scrollTop the same way (CSS scroll-behavior:smooth would be
-    // jankier — we want continuous interpolation).
+    const targetTop = lineFloatToScrollTop(displayedLineFloat);
     const currentTop = $scroll.scrollTop;
     const topDelta = targetTop - currentTop;
-    const maxPx = window.innerHeight * SLEW_VIEWPORT_FRACTION_PER_SEC * dt * 5; // 5× because we're closing position fast
-    if (Math.abs(topDelta) > window.innerHeight * 2) {
-      $scroll.scrollTop = targetTop;       // big jump → snap
+    // The line-space slew already handles smoothness; we can apply the
+    // scroll position directly without an additional pixel-space slew.
+    // But if the line layout shifted (resize, font change), snap so the
+    // user doesn't see a slow drift.
+    if (Math.abs(topDelta) > $scroll.clientHeight * 2) {
+      $scroll.scrollTop = targetTop;
     } else {
-      const pxStep = topDelta >= 0 ? Math.min(topDelta, maxPx) : Math.max(topDelta, -maxPx);
-      $scroll.scrollTop = currentTop + pxStep;
+      $scroll.scrollTop = targetTop;
     }
 
     // Track "fresh" state for the warning indicator.
     if ((now - lastTickAt) < 4000) lastSeenTickAt = now;
-
-    requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 

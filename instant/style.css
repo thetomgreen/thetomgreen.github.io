@@ -129,8 +129,44 @@ button#toggle-chords[aria-pressed="true"] { background: #2c5fff; border-color: #
   font-size: 0.9em;
 }
 
-/* Hide chords when toggle is off */
+/* Hide chords when toggle is off — both standalone chord lines and the
+ * chord row inside a chord-pair block. */
 .song-body[data-show-chords="false"] .line.chords { display: none; }
+.song-body[data-show-chords="false"] .chord-pair { padding-top: 0; }
+.song-body[data-show-chords="false"] .syl-chord  { display: none; }
+
+/* Chord-over-syllable rendering (port of iOS ChordLyricWrapper).
+ *
+ * Each pair is rendered as a flow of inline-block "syllables". The chord
+ * is absolutely-positioned above its syllable's first character, so when
+ * the lyric wraps to a new line, the chord travels with its syllable
+ * naturally — there's no separate chord-line wrap problem. */
+.chord-pair {
+  padding-top: 1.5em;          /* reserve room for the chord row above */
+  line-height: 1.25;
+  margin: 0.1em 0;
+  overflow-wrap: anywhere;
+}
+.syl {
+  position: relative;
+  display: inline-block;
+  vertical-align: top;
+  white-space: pre-wrap;       /* the lyric span inherits this */
+  overflow-wrap: anywhere;
+}
+.syl-chord {
+  position: absolute;
+  top: -1.4em;
+  left: 0;
+  color: #6ea8ff;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-weight: 600;
+  font-size: 0.9em;
+  white-space: nowrap;
+  /* Keep the chord on one row even if its host syllable wraps. The
+   * column reference is the start of the syllable. */
+}
+.syl-lyric { color: inherit; }
 
 /* Empty state (host has no active song / row got cleared) */
 .empty-state {
