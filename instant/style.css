@@ -1,0 +1,127 @@
+/* Reset + base */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", Roboto, sans-serif;
+  background: #0a0a0a;
+  color: #f5f5f5;
+  font-size: 18px;             /* base size — overridden by JS via --font-size */
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Top bar */
+.topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  padding: env(safe-area-inset-top, 8px) 12px 8px 12px;
+  background: rgba(10, 10, 10, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid #1d1d1d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  z-index: 10;
+}
+.title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.title-wrap h1 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #444;
+  transition: background 0.4s;
+  flex-shrink: 0;
+}
+.status-dot.live { background: #34c759; box-shadow: 0 0 8px rgba(52, 199, 89, 0.7); }
+.status-dot.warn { background: #ff9f0a; }
+.status-dot.error { background: #ff3b30; }
+
+/* Controls */
+.controls { display: flex; gap: 6px; flex-shrink: 0; }
+.controls button {
+  font: inherit;
+  font-size: 0.85rem;
+  background: #1f1f1f;
+  color: #f5f5f5;
+  border: 1px solid #2c2c2c;
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-width: 44px;
+  min-height: 36px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.controls button:hover, .controls button:focus-visible { background: #2a2a2a; outline: none; }
+.controls button[aria-pressed="true"] { background: #2c5fff; border-color: #2c5fff; }
+
+/* Scroll area */
+.scroll-area {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-top: calc(env(safe-area-inset-top, 8px) + 52px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.song-body {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px 18px 0 18px;
+  font-size: var(--font-size, 18px);
+  line-height: 1.45;
+  font-variant-ligatures: none;
+}
+.bottom-spacer { height: 80vh; }    /* let the last line scroll to mid-screen */
+
+/* Lyric and chord rendering */
+.line { white-space: pre; min-height: 1em; }
+.line.lyric { color: #f5f5f5; }
+.line.chords {
+  color: #6ea8ff;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: pre;
+}
+.line.section {
+  color: #999;
+  font-style: italic;
+  margin-top: 0.6em;
+  margin-bottom: 0.1em;
+  font-size: 0.9em;
+}
+
+/* Hide chords when toggle is off */
+.song-body[data-show-chords="false"] .line.chords { display: none; }
+
+/* Status banner (errors / "session ended") */
+.banner {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(255, 59, 48, 0.92);
+  color: white;
+  text-align: center;
+  font-size: 0.9rem;
+  padding: 10px 12px;
+  z-index: 20;
+}
+.banner.info { background: rgba(40, 40, 40, 0.95); }
+.banner.warn { background: rgba(255, 159, 10, 0.95); color: #000; }
+.banner.hidden { display: none; }
