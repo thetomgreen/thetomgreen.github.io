@@ -472,17 +472,19 @@
     const tokens = tokenizeChordLineFull(chordRaw);
     tokens.sort((a, b) => a.col - b.col);
 
-    // One syllable: an inline-block holding a single word of lyric and
-    // optionally an absolutely-positioned chord above it.
+    // One syllable: an inline-block whose two block-level children stack
+    // chord-above-lyric. Even a chordless syllable emits a chord row with
+    // a non-breaking space, so all syllables in a chord-pair share the
+    // same height and their lyric baselines align horizontally. Without
+    // this, chordless syllables float 1em higher than their chord-bearing
+    // siblings on the same visual line.
     const makeSyl = (chordText, lyricText) => {
       const syl = document.createElement('span');
       syl.className = 'syl';
-      if (chordText) {
-        const ch = document.createElement('span');
-        ch.className = 'syl-chord';
-        ch.textContent = chordText;
-        syl.appendChild(ch);
-      }
+      const ch = document.createElement('span');
+      ch.className = chordText ? 'syl-chord' : 'syl-chord syl-chord-empty';
+      ch.textContent = chordText || ' ';
+      syl.appendChild(ch);
       const ly = document.createElement('span');
       ly.className = 'syl-lyric';
       ly.textContent = lyricText.length > 0 ? lyricText : ' ';
