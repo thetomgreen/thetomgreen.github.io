@@ -179,11 +179,13 @@
   });
 
   // -------------------------------------------------------------------
-  // Debug HUD — always-on small pill at the bottom showing the last few
-  // server events so we can observe runtime behaviour on an iPad without
-  // attaching Web Inspector.
+  // Debug HUD — opt-in via `?debug=1` in the URL. Hidden by default so
+  // actual audience members see a clean page; still available to us for
+  // diagnostics when explicitly enabled.
   // -------------------------------------------------------------------
+  const debugEnabled = new URLSearchParams(location.search).get('debug') === '1';
   const $debugHud = (() => {
+    if (!debugEnabled) return { textContent: '' };  // no-op stub
     const d = document.createElement('div');
     d.id = 'debug-hud';
     d.style.cssText = 'position:fixed;left:6px;bottom:env(safe-area-inset-bottom,4px);max-width:95vw;background:rgba(0,0,0,0.78);color:#9fe;font:10px/1.25 ui-monospace,monospace;padding:6px 8px;border-radius:6px;z-index:50;pointer-events:none;white-space:pre;max-height:60vh;overflow:hidden;';
