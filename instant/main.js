@@ -129,6 +129,29 @@
     }
   });
 
+  // -------------------------------------------------------------------
+  // Debug HUD — always-on small pill at the bottom showing the last few
+  // server events so we can observe runtime behaviour on an iPad without
+  // attaching Web Inspector.
+  // -------------------------------------------------------------------
+  const $debugHud = (() => {
+    const d = document.createElement('div');
+    d.id = 'debug-hud';
+    d.style.cssText = 'position:fixed;left:6px;bottom:env(safe-area-inset-bottom,4px);max-width:90vw;background:rgba(0,0,0,0.7);color:#9fe;font:11px/1.3 ui-monospace,monospace;padding:4px 7px;border-radius:6px;z-index:50;pointer-events:none;white-space:pre;';
+    document.body.appendChild(d);
+    return d;
+  })();
+  let debugCounts = { tick: 0, row_bcast: 0, pg_change: 0, refetch: 0, applyRow: 0 };
+  function bumpDebug(kind, info) {
+    debugCounts[kind] = (debugCounts[kind] || 0) + 1;
+    const r = row || {};
+    $debugHud.textContent =
+      `t:${debugCounts.tick} rB:${debugCounts.row_bcast} pg:${debugCounts.pg_change} rF:${debugCounts.refetch} aR:${debugCounts.applyRow}\n` +
+      `last: ${kind}${info ? ' ' + info : ''}\n` +
+      `sub: ${(r.song_subtitle ?? '∅').slice(0,30)} | title: ${(r.song_title ?? '∅').slice(0,30)}\n` +
+      `mode: ${$body.dataset.mode || '?'} | lines: ${lineAnchors.length}`;
+  }
+
   function applyZoom()        { document.documentElement.style.setProperty('--font-size', zoom + 'px'); }
   function applyChordsToggle() {
     $body.dataset.showChords = showChords ? 'true' : 'false';
@@ -196,6 +219,7 @@
         return;
       }
       applyRow(data);
+      bumpDebug('refetch', 'sub=' + (data.song_subtitle ?? '∅'));
     } catch (e) {
       console.error('initial load failed', e);
       showBanner('error', 'Couldn’t load the share session.');
@@ -209,6 +233,7 @@
 
   function applyRow(data) {
     row = data;
+    bumpDebug('applyRow', 'sub=' + (data.song_subtitle ?? '∅'));
     if (new Date(data.expires_at) < new Date()) {
       showBanner('info', 'Session ended.');
       setStatus('idle', 'Ended');
@@ -258,6 +283,7 @@
       table: 'share_sessions',
       filter: 'id=eq.' + code
     }, (payload) => {
+      bumpDebug('pg_change', 'has new=' + !!payload.new);
       if (payload.new) applyRow(payload.new);
     })
     .subscribe((status) => {
@@ -278,8 +304,10 @@
       lastTickAt = performance.now();
       hideBanner();
       setStatus('live', 'Live');
+      bumpDebug('tick', 'play=' + serverPlaying);
     })
     .on('broadcast', { event: 'row' }, (msg) => {
+      bumpDebug('row_bcast', 'sub=' + (msg.payload?.song_subtitle ?? '∅'));
       if (msg.payload) applyRow(msg.payload);
     })
     .subscribe();
