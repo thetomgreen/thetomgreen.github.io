@@ -55,14 +55,20 @@
   // -------------------------------------------------------------------
   // DOM refs + per-viewer state
   // -------------------------------------------------------------------
-  const $title   = document.getElementById('song-title');
-  const $body    = document.getElementById('song-body');
-  const $scroll  = document.getElementById('scroll-area');
-  const $dot     = document.getElementById('status-dot');
-  const $banner  = document.getElementById('banner');
-  const $toggle  = document.getElementById('toggle-chords');
-  const $zoomIn  = document.getElementById('zoom-in');
-  const $zoomOut = document.getElementById('zoom-out');
+  const $title    = document.getElementById('song-title');
+  const $body     = document.getElementById('song-body');
+  const $empty    = document.getElementById('empty-state');
+  const $scroll   = document.getElementById('scroll-area');
+  const $dot      = document.getElementById('status-dot');
+  const $banner   = document.getElementById('banner');
+  const $toggle   = document.getElementById('toggle-chords');
+  const $zoomIn   = document.getElementById('zoom-in');
+  const $zoomOut  = document.getElementById('zoom-out');
+  const $showQR   = document.getElementById('show-qr');
+  const $qrOverlay = document.getElementById('qr-overlay');
+  const $qrTarget  = document.getElementById('qr-target');
+  const $qrUrl     = document.getElementById('qr-url');
+  const $qrClose   = document.getElementById('qr-close');
 
   // Local UI state (per viewer, persisted in localStorage).
   const lsKey = (k) => `instant.${k}`;
@@ -77,6 +83,50 @@
     showChords = !showChords;
     localStorage.setItem(lsKey('showChords'), String(showChords));
     applyChordsToggle();
+  });
+
+  // QR overlay — viewer-side "show this to a friend" affordance.
+  // QRious is small (~20KB) and ships a self-contained canvas QR
+  // renderer; lazy-loaded the first time the user taps the QR button
+  // so first paint isn't slowed down for the ~99% of viewers who'll
+  // never need it.
+  let qrLibPromise = null;
+  function loadQRLib() {
+    if (qrLibPromise) return qrLibPromise;
+    qrLibPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js';
+      s.onload = () => resolve(window.QRious);
+      s.onerror = () => { qrLibPromise = null; reject(new Error('QR library failed to load')); };
+      document.head.appendChild(s);
+    });
+    return qrLibPromise;
+  }
+  $showQR.addEventListener('click', async () => {
+    const url = location.href;
+    $qrUrl.textContent = url;
+    $qrOverlay.classList.remove('hidden');
+    $qrTarget.replaceChildren();           // clear any prior render
+    try {
+      const QRious = await loadQRLib();
+      const canvas = document.createElement('canvas');
+      $qrTarget.appendChild(canvas);
+      // 600px backing canvas → crisp at any rendered size thanks to
+      // image-rendering: pixelated in the CSS.
+      new QRious({ element: canvas, value: url, size: 600, level: 'M', backgroundAlpha: 1, background: '#fff', foreground: '#000' });
+    } catch (e) {
+      $qrTarget.textContent = 'Couldn’t render the QR — copy the link instead.';
+    }
+  });
+  $qrClose.addEventListener('click', () => { $qrOverlay.classList.add('hidden'); });
+  $qrOverlay.addEventListener('click', (e) => {
+    // Click on the dark area outside the card also dismisses.
+    if (e.target === $qrOverlay) $qrOverlay.classList.add('hidden');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$qrOverlay.classList.contains('hidden')) {
+      $qrOverlay.classList.add('hidden');
+    }
   });
 
   function applyZoom()        { document.documentElement.style.setProperty('--font-size', zoom + 'px'); }
@@ -140,6 +190,10 @@
     }
   }
 
+  /** Sentinel set by the iOS app in song_subtitle when the host is on a
+   *  list view (set list overview, songs tab, etc.) rather than a song. */
+  const LIST_SENTINEL = '__list__';
+
   function applyRow(data) {
     row = data;
     if (new Date(data.expires_at) < new Date()) {
@@ -154,13 +208,29 @@
     serverPlaying = !!data.is_playing;
     serverInPlay  = !!data.is_in_play_mode;
     lastTickAt = performance.now();
-    if (data.song_raw_text !== renderedSongRawText) {
-      renderSong(data.song_raw_text || '');
+
+    const isList = (data.song_subtitle === LIST_SENTINEL);
+    if (data.song_raw_text !== renderedSongRawText || isList !== ($body.dataset.mode === 'list')) {
+      if (isList) {
+        renderList(data.song_raw_text || '');
+        $body.dataset.mode = 'list';
+      } else {
+        renderSong(data.song_raw_text || '');
+        $body.dataset.mode = 'song';
+      }
       renderedSongRawText = data.song_raw_text || '';
       displayedElapsed = serverElapsed;
-      // Reset scroll on song switch.
+      // Reset scroll on view switch.
       requestAnimationFrame(() => $scroll.scrollTo({ top: 0, behavior: 'auto' }));
     }
+    // Show/hide the chord toggle — pointless in list mode.
+    $toggle.style.visibility = isList ? 'hidden' : 'visible';
+
+    // Empty state: title and raw text are both empty. Shouldn't happen in
+    // normal use but covers the case where a row gets cleared.
+    const isEmpty = !data.song_title && !data.song_raw_text;
+    $empty.classList.toggle('hidden', !isEmpty);
+    $body.style.display = isEmpty ? 'none' : '';
   }
 
   // Subscribe to row-level changes (song switches, start/stop).
@@ -256,6 +326,33 @@
     $body.replaceChildren(frag);
   }
 
+  /** List view — one title per line, simple stacked rendering. No chord
+   *  classification, no chord-line styling: this is just a list of songs
+   *  the host is looking at. */
+  function renderList(rawText) {
+    const titles = rawText.split('\n').map(t => t.trim()).filter(Boolean);
+    const frag = document.createDocumentFragment();
+    titles.forEach((t, i) => {
+      const div = document.createElement('div');
+      div.className = 'list-item';
+      const idx = document.createElement('span');
+      idx.className = 'list-idx';
+      idx.textContent = String(i + 1) + '.';
+      const lbl = document.createElement('span');
+      lbl.className = 'list-title';
+      lbl.textContent = t;
+      div.append(idx, lbl);
+      frag.appendChild(div);
+    });
+    if (titles.length === 0) {
+      const div = document.createElement('div');
+      div.className = 'list-empty';
+      div.textContent = '(no songs)';
+      frag.appendChild(div);
+    }
+    $body.replaceChildren(frag);
+  }
+
   // -------------------------------------------------------------------
   // Scroll loop — convert displayedElapsed into scrollTop
   // -------------------------------------------------------------------
@@ -266,6 +363,13 @@
     lastFrameAt = now;
 
     if (!row) {
+      requestAnimationFrame(loop);
+      return;
+    }
+    // In list mode the audience just sees a static list — no playback,
+    // no elapsed-driven scroll. Skip the slew math entirely; the viewer
+    // is free to scroll manually within the list.
+    if ($body.dataset.mode === 'list') {
       requestAnimationFrame(loop);
       return;
     }

@@ -11,11 +11,12 @@
 <body>
   <header class="topbar">
     <div class="title-wrap">
-      <h1 id="song-title">…</h1>
       <span id="status-dot" class="status-dot" aria-live="polite" title="Connecting…"></span>
+      <h1 id="song-title">…</h1>
+      <button id="toggle-chords" type="button" aria-pressed="false">Chords</button>
     </div>
     <div class="controls">
-      <button id="toggle-chords" type="button" aria-pressed="false">Chords</button>
+      <button id="show-qr" type="button" aria-label="Show QR code to share this link">QR</button>
       <button id="zoom-out" type="button" aria-label="Zoom out">A−</button>
       <button id="zoom-in" type="button" aria-label="Zoom in">A+</button>
     </div>
@@ -23,13 +24,30 @@
 
   <main id="scroll-area" class="scroll-area">
     <article id="song-body" class="song-body" aria-live="polite"></article>
+    <div id="empty-state" class="empty-state hidden">
+      <p>Performer is between songs.</p>
+    </div>
     <div id="bottom-spacer" class="bottom-spacer" aria-hidden="true"></div>
   </main>
 
   <div id="banner" class="banner hidden" role="status" aria-live="polite"></div>
 
+  <!-- QR-share overlay: shows the current page URL so the viewer can
+       hand the link to others around them without needing the original
+       performer to re-show their QR. Hidden by default. -->
+  <div id="qr-overlay" class="qr-overlay hidden" role="dialog" aria-modal="true" aria-label="Share this link">
+    <button id="qr-close" type="button" class="qr-close" aria-label="Close">×</button>
+    <div class="qr-card">
+      <div id="qr-target" class="qr-target"></div>
+      <p class="qr-hint">Scan to follow along</p>
+      <p id="qr-url" class="qr-url"></p>
+    </div>
+  </div>
+
   <!-- Supabase JS client (UMD bundle). Loaded from jsDelivr CDN. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <!-- QR code generator (lazy-loaded on demand by main.js so it doesn't
+       cost first-paint for the 99% of viewers who never tap "QR"). -->
   <script src="main.js"></script>
 </body>
 </html>

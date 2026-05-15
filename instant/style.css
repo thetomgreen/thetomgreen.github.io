@@ -15,7 +15,7 @@ body {
 .topbar {
   position: fixed;
   top: 0; left: 0; right: 0;
-  padding: env(safe-area-inset-top, 8px) 12px 8px 12px;
+  padding: env(safe-area-inset-top, 8px) 10px 8px 10px;
   background: rgba(10, 10, 10, 0.94);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -23,7 +23,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  flex-wrap: nowrap;           /* title + controls always on one row */
   z-index: 10;
 }
 .title-wrap {
@@ -31,7 +32,7 @@ body {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;              /* shrink so long titles ellipsize, not overflow */
 }
 .title-wrap h1 {
   margin: 0;
@@ -41,6 +42,8 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;                /* required inside flex for ellipsis */
+  flex: 1 1 auto;
 }
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -52,23 +55,28 @@ body {
 .status-dot.warn { background: #ff9f0a; }
 .status-dot.error { background: #ff3b30; }
 
-/* Controls */
-.controls { display: flex; gap: 6px; flex-shrink: 0; }
-.controls button {
+/* Controls — both the in-title-wrap toggle and the right-side group */
+.controls, .title-wrap { /* shared button styles */ }
+button#toggle-chords, .controls button {
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   background: #1f1f1f;
   color: #f5f5f5;
   border: 1px solid #2c2c2c;
   border-radius: 8px;
-  padding: 6px 10px;
-  min-width: 44px;
-  min-height: 36px;
+  padding: 5px 9px;
+  min-width: 36px;
+  min-height: 32px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
 }
-.controls button:hover, .controls button:focus-visible { background: #2a2a2a; outline: none; }
-.controls button[aria-pressed="true"] { background: #2c5fff; border-color: #2c5fff; }
+button#toggle-chords:hover, button#toggle-chords:focus-visible,
+.controls button:hover, .controls button:focus-visible {
+  background: #2a2a2a; outline: none;
+}
+button#toggle-chords[aria-pressed="true"] { background: #2c5fff; border-color: #2c5fff; }
+.controls { display: flex; gap: 4px; flex-shrink: 0; }
 
 /* Scroll area */
 .scroll-area {
@@ -89,15 +97,29 @@ body {
 }
 .bottom-spacer { height: 80vh; }    /* let the last line scroll to mid-screen */
 
-/* Lyric and chord rendering */
-.line { white-space: pre; min-height: 1em; }
+/* Lyric and chord rendering
+ *
+ * Use `pre-wrap` so very long lines reflow to fit narrow viewports rather
+ * than horizontal-scroll. `overflow-wrap: anywhere` is the belt-and-braces
+ * — guarantees mid-word wrapping if a single token is wider than the
+ * container (long URLs, "ohhhhhh" runs, etc).
+ *
+ * Chord lines render in monospace so their column positions match the
+ * iOS source-app spacing convention. When they wrap on narrow screens
+ * they wrap independently of the lyric beneath; perfect chord-syllable
+ * alignment under wrap is the iOS app's job, and not the audience use
+ * case. */
+.line {
+  min-height: 1em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .line.lyric { color: #f5f5f5; }
 .line.chords {
   color: #6ea8ff;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-weight: 600;
   letter-spacing: 0;
-  white-space: pre;
 }
 .line.section {
   color: #999;
@@ -109,6 +131,45 @@ body {
 
 /* Hide chords when toggle is off */
 .song-body[data-show-chords="false"] .line.chords { display: none; }
+
+/* Empty state (host has no active song / row got cleared) */
+.empty-state {
+  text-align: center;
+  color: #888;
+  font-size: 0.95rem;
+  padding: 28vh 24px 0 24px;
+}
+.empty-state.hidden { display: none; }
+
+/* List mode — host is on a set list overview or the songs tab. */
+.song-body[data-mode="list"] {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.list-item {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.list-idx {
+  color: #777;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.5ch;
+  text-align: right;
+  flex-shrink: 0;
+}
+.list-title {
+  color: #f5f5f5;
+  flex: 1 1 auto;
+  word-break: break-word;
+}
+.list-empty {
+  text-align: center;
+  color: #777;
+  padding: 24px;
+}
 
 /* Status banner (errors / "session ended") */
 .banner {
@@ -125,3 +186,65 @@ body {
 .banner.info { background: rgba(40, 40, 40, 0.95); }
 .banner.warn { background: rgba(255, 159, 10, 0.95); color: #000; }
 .banner.hidden { display: none; }
+
+/* QR-share overlay — tap the "QR" button in the top bar to pop a big
+ * code so a viewer can show it to others nearby. Full-screen so it
+ * works whatever device size; close X in the corner. */
+.qr-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.96);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+.qr-overlay.hidden { display: none; }
+.qr-card {
+  background: #fff;
+  color: #111;
+  padding: 24px;
+  border-radius: 16px;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+}
+.qr-target {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qr-target canvas, .qr-target img, .qr-target svg {
+  width: 100%; height: 100%;
+  image-rendering: pixelated;       /* crisp QR squares at any size */
+}
+.qr-hint {
+  margin: 12px 0 4px 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.qr-url {
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  color: #444;
+  word-break: break-all;
+}
+.qr-close {
+  position: absolute;
+  top: max(env(safe-area-inset-top, 12px), 12px);
+  right: 12px;
+  width: 44px; height: 44px;
+  border-radius: 22px;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.qr-close:hover, .qr-close:focus-visible { background: rgba(255, 255, 255, 0.25); outline: none; }
