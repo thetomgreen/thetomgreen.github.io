@@ -59,17 +59,24 @@ body {
 .controls, .title-wrap { /* shared button styles */ }
 button#toggle-chords, .controls button {
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   background: #1f1f1f;
   color: #f5f5f5;
   border: 1px solid #2c2c2c;
-  border-radius: 8px;
-  padding: 5px 9px;
-  min-width: 36px;
-  min-height: 32px;
+  border-radius: 7px;
+  padding: 4px 7px;
+  min-width: 0;
+  min-height: 30px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   flex-shrink: 0;
+  white-space: nowrap;
+}
+@media (max-width: 380px) {
+  button#toggle-chords, .controls button {
+    padding: 3px 5px;
+    font-size: 0.7rem;
+  }
 }
 button#toggle-chords:hover, button#toggle-chords:focus-visible,
 .controls button:hover, .controls button:focus-visible {
@@ -142,18 +149,21 @@ button#toggle-chords[aria-pressed="true"] { background: #2c5fff; border-color: #
  * the lyric wraps to a new line, the chord travels with its syllable
  * naturally — there's no separate chord-line wrap problem. */
 .chord-pair {
-  padding-top: 1.5em;          /* reserve room for the chord row above */
-  line-height: 1.25;
+  padding-top: 0;
+  line-height: 2.4;            /* tall enough that each wrapped row leaves room for its chord above */
   margin: 0.1em 0;
   overflow-wrap: anywhere;
 }
+.song-body[data-show-chords="false"] .chord-pair { line-height: 1.45; }
 .syl {
   position: relative;
   display: inline-block;
   vertical-align: top;
-  white-space: pre-wrap;       /* the lyric span inherits this */
+  white-space: normal;
   overflow-wrap: anywhere;
+  max-width: 100%;             /* a single very long word can still break inside */
 }
+.syl-lyric { overflow-wrap: anywhere; word-break: break-word; }
 .syl-chord {
   position: absolute;
   top: -1.4em;
@@ -166,7 +176,7 @@ button#toggle-chords[aria-pressed="true"] { background: #2c5fff; border-color: #
   /* Keep the chord on one row even if its host syllable wraps. The
    * column reference is the start of the syllable. */
 }
-.syl-lyric { color: inherit; }
+.syl-lyric { color: inherit; overflow-wrap: anywhere; word-break: break-word; }
 
 /* Empty state (host has no active song / row got cleared) */
 .empty-state {

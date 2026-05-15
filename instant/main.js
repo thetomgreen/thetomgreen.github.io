@@ -236,10 +236,8 @@
       // line on next frame (rather than starting at top and slewing
       // there — which made joining mid-song feel like the page was
       // "racing to catch up").
-      requestAnimationFrame(() => {
-        rebuildLineAnchors();
-        needSnap = true;
-      });
+      rebuildLineAnchors();
+      needSnap = true;
     }
     // Show/hide the chord toggle — pointless in list mode.
     $toggle.style.visibility = isList ? 'hidden' : 'visible';
@@ -266,7 +264,9 @@
       if (status === 'SUBSCRIBED') setStatus('live', 'Live');
     });
 
-  // Subscribe to high-frequency broadcast ticks.
+  // Subscribe to high-frequency broadcast ticks AND `row` events (which
+  // iOS broadcasts after every row update — far more reliable than
+  // postgres_changes which has been observed to skip events).
   supabase
     .channel('share:' + code, { config: { broadcast: { self: false } } })
     .on('broadcast', { event: 'tick' }, (msg) => {
@@ -279,7 +279,14 @@
       hideBanner();
       setStatus('live', 'Live');
     })
+    .on('broadcast', { event: 'row' }, (msg) => {
+      if (msg.payload) applyRow(msg.payload);
+    })
     .subscribe();
+
+  // Belt-and-braces: re-fetch every 20s in case both postgres_changes AND
+  // broadcast missed a row change (e.g. WS reconnect window).
+  setInterval(() => { loadInitial(); }, 20000);
 
   // Reconnect indicator. supabase-js auto-reconnects; we just notice the gap.
   let lastSeenTickAt = performance.now();
@@ -365,6 +372,8 @@
     const tokens = tokenizeChordLineFull(chordRaw);
     tokens.sort((a, b) => a.col - b.col);
 
+    // One syllable: an inline-block holding a single word of lyric and
+    // optionally an absolutely-positioned chord above it.
     const makeSyl = (chordText, lyricText) => {
       const syl = document.createElement('span');
       syl.className = 'syl';
@@ -376,26 +385,49 @@
       }
       const ly = document.createElement('span');
       ly.className = 'syl-lyric';
-      // Need a non-breaking space so a syllable with no lyric text still
-      // has width to anchor its chord (trailing chord beyond end of lyric).
       ly.textContent = lyricText.length > 0 ? lyricText : ' ';
       syl.appendChild(ly);
       return syl;
     };
 
+    // Append one chord-pair "chunk" (the lyric span belonging to one chord
+    // column) as per-word inline-block syllables separated by real text-node
+    // spaces. Per-word splitting is what makes the line wrap on narrow
+    // viewports: each .syl is atomic, so wrap only happens between them.
+    const appendChunk = (chordText, chunk) => {
+      if (chunk.length === 0) {
+        if (chordText) pair.appendChild(makeSyl(chordText, ''));
+        return;
+      }
+      const parts = chunk.split(/(\s+)/).filter(s => s.length > 0);
+      let assignedChord = false;
+      for (const part of parts) {
+        if (/^\s+$/.test(part)) {
+          pair.appendChild(document.createTextNode(part));
+        } else {
+          const useChord = !assignedChord ? (chordText || '') : '';
+          assignedChord = true;
+          pair.appendChild(makeSyl(useChord, part));
+        }
+      }
+      if (!assignedChord && chordText) {
+        pair.appendChild(makeSyl(chordText, ''));
+      }
+    };
+
     if (tokens.length === 0) {
-      pair.appendChild(makeSyl('', lyricRaw));
+      appendChunk('', lyricRaw);
       return pair;
     }
     if (tokens[0].col > 0) {
-      pair.appendChild(makeSyl('', lyricRaw.substring(0, tokens[0].col)));
+      appendChunk('', lyricRaw.substring(0, tokens[0].col));
     }
     for (let k = 0; k < tokens.length; k++) {
       const tok = tokens[k];
       const next = tokens[k + 1];
       const endCol = next ? next.col : Math.max(lyricRaw.length, tok.col + tok.text.length);
       const sub = lyricRaw.substring(tok.col, endCol);
-      pair.appendChild(makeSyl(tok.text, sub));
+      appendChunk(tok.text, sub);
     }
     return pair;
   }
