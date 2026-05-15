@@ -137,19 +137,21 @@
   const $debugHud = (() => {
     const d = document.createElement('div');
     d.id = 'debug-hud';
-    d.style.cssText = 'position:fixed;left:6px;bottom:env(safe-area-inset-bottom,4px);max-width:90vw;background:rgba(0,0,0,0.7);color:#9fe;font:11px/1.3 ui-monospace,monospace;padding:4px 7px;border-radius:6px;z-index:50;pointer-events:none;white-space:pre;';
+    d.style.cssText = 'position:fixed;left:6px;bottom:env(safe-area-inset-bottom,4px);max-width:95vw;background:rgba(0,0,0,0.78);color:#9fe;font:10px/1.25 ui-monospace,monospace;padding:6px 8px;border-radius:6px;z-index:50;pointer-events:none;white-space:pre;max-height:60vh;overflow:hidden;';
     document.body.appendChild(d);
     return d;
   })();
-  let debugCounts = { tick: 0, row_bcast: 0, pg_change: 0, refetch: 0, applyRow: 0 };
+  let debugCounts = { tick: 0, row_bcast: 0, pg_change: 0, refetch: 0, applyRow: 0, ios_dbg: 0 };
+  let iosLastLines = [];
   function bumpDebug(kind, info) {
     debugCounts[kind] = (debugCounts[kind] || 0) + 1;
     const r = row || {};
     $debugHud.textContent =
-      `t:${debugCounts.tick} rB:${debugCounts.row_bcast} pg:${debugCounts.pg_change} rF:${debugCounts.refetch} aR:${debugCounts.applyRow}\n` +
+      `t:${debugCounts.tick} rB:${debugCounts.row_bcast} pg:${debugCounts.pg_change} rF:${debugCounts.refetch} aR:${debugCounts.applyRow} iD:${debugCounts.ios_dbg}\n` +
       `last: ${kind}${info ? ' ' + info : ''}\n` +
       `sub: ${(r.song_subtitle ?? '∅').slice(0,30)} | title: ${(r.song_title ?? '∅').slice(0,30)}\n` +
-      `mode: ${$body.dataset.mode || '?'} | lines: ${lineAnchors.length}`;
+      `mode: ${$body.dataset.mode || '?'} | lines: ${lineAnchors.length}\n` +
+      `iOS:\n${iosLastLines.slice(-6).join('\n')}`;
   }
 
   function applyZoom()        { document.documentElement.style.setProperty('--font-size', zoom + 'px'); }
@@ -309,6 +311,13 @@
     .on('broadcast', { event: 'row' }, (msg) => {
       bumpDebug('row_bcast', 'sub=' + (msg.payload?.song_subtitle ?? '∅'));
       if (msg.payload) applyRow(msg.payload);
+    })
+    .on('broadcast', { event: 'debug' }, (msg) => {
+      const p = msg.payload || {};
+      const line = `[${p.state || '?'}] ${p.msg || ''}`;
+      iosLastLines.push(line);
+      if (iosLastLines.length > 20) iosLastLines.shift();
+      bumpDebug('ios_dbg', '');
     })
     .subscribe();
 
