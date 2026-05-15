@@ -79,6 +79,55 @@
 
   $zoomIn.addEventListener('click', () => { zoom = clamp(zoom + 2, 12, 64); applyZoom(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
   $zoomOut.addEventListener('click', () => { zoom = clamp(zoom - 2, 12, 64); applyZoom(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
+
+  // -------------------------------------------------------------------
+  // Pinch-zoom — translate two-finger gestures into our zoom commands.
+  // The viewport meta already disables native browser pinch (so it doesn't
+  // double-scale the page); we drive the same `--font-size` variable here
+  // so text-wrap reflows as the user zooms.
+  // -------------------------------------------------------------------
+  (() => {
+    let initialDist = 0;
+    let initialZoom = 0;
+    function dist(t) {
+      const dx = t[0].clientX - t[1].clientX;
+      const dy = t[0].clientY - t[1].clientY;
+      return Math.hypot(dx, dy);
+    }
+    document.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        initialDist = dist(e.touches);
+        initialZoom = zoom;
+      }
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && initialDist > 0) {
+        e.preventDefault();
+        const d = dist(e.touches);
+        const ratio = d / initialDist;
+        zoom = clamp(initialZoom * ratio, 12, 64);
+        applyZoom();
+      }
+    }, { passive: false });
+    document.addEventListener('touchend', () => {
+      if (initialDist > 0) {
+        initialDist = 0;
+        localStorage.setItem(lsKey('zoom'), String(zoom));
+      }
+    });
+    // Safari (macOS trackpad pinch + iPad with hardware kbd) emits
+    // gesture-* events instead of multitouch touchmove. Handle both.
+    let gestureStartZoom = 0;
+    document.addEventListener('gesturestart', (e) => { e.preventDefault(); gestureStartZoom = zoom; }, { passive: false });
+    document.addEventListener('gesturechange', (e) => {
+      e.preventDefault();
+      zoom = clamp(gestureStartZoom * e.scale, 12, 64);
+      applyZoom();
+    }, { passive: false });
+    document.addEventListener('gestureend', () => {
+      localStorage.setItem(lsKey('zoom'), String(zoom));
+    });
+  })();
   $toggle.addEventListener('click', () => {
     showChords = !showChords;
     localStorage.setItem(lsKey('showChords'), String(showChords));
@@ -244,16 +293,30 @@
       setStatus('live', 'Live');
     }
     $title.textContent = data.song_title || ' ';
-    serverElapsed = data.virtual_elapsed || 0;
-    serverPlaying = !!data.is_playing;
-    serverInPlay  = !!data.is_in_play_mode;
-    lastTickAt = performance.now();
 
     const isList = (data.song_subtitle === LIST_SENTINEL);
-    if (data.song_raw_text !== renderedSongRawText || isList !== ($body.dataset.mode === 'list')) {
+    const contentChanged = (data.song_raw_text !== renderedSongRawText) ||
+                           (isList !== ($body.dataset.mode === 'list'));
+
+    // Only adopt the row's transport snapshot when this is a NEW song/view.
+    // On a refetch of the same song, the row's virtual_elapsed is stale
+    // (it only gets updated on song-change writes, not every tick) — letting
+    // it overwrite live tick state would rewind the page every 20 s and
+    // produce the "scrolling stops" symptom the user reported.
+    if (contentChanged) {
+      serverElapsed = data.virtual_elapsed || 0;
+      serverPlaying = !!data.is_playing;
+      serverInPlay  = !!data.is_in_play_mode;
+      lastTickAt = performance.now();
+    }
+
+    if (contentChanged) {
       if (isList) {
         renderList(data.song_raw_text || '');
         $body.dataset.mode = 'list';
+        // Lists are static — show them from the top, not wherever the
+        // previous song's scrollTop happened to leave us.
+        $scroll.scrollTop = 0;
       } else {
         renderSong(data.song_raw_text || '');
         $body.dataset.mode = 'song';

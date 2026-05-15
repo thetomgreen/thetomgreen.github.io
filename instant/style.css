@@ -139,44 +139,48 @@ button#toggle-chords[aria-pressed="true"] { background: #2c5fff; border-color: #
 /* Hide chords when toggle is off — both standalone chord lines and the
  * chord row inside a chord-pair block. */
 .song-body[data-show-chords="false"] .line.chords { display: none; }
-.song-body[data-show-chords="false"] .chord-pair { padding-top: 0; }
-.song-body[data-show-chords="false"] .syl-chord  { display: none; }
 
-/* Chord-over-syllable rendering (port of iOS ChordLyricWrapper).
+/* Chord-over-syllable rendering.
  *
- * Each pair is rendered as a flow of inline-block "syllables". The chord
- * is absolutely-positioned above its syllable's first character, so when
- * the lyric wraps to a new line, the chord travels with its syllable
- * naturally — there's no separate chord-line wrap problem. */
+ * Each pair is a flow of inline-block "syllables". Within each syllable
+ * the chord and lyric are stacked vertically as block-level children, so
+ * when the syllable wraps to a new visual line, the chord wraps with it
+ * — and every visual line has its own chord row above without any
+ * extra-tall line-height hack. */
 .chord-pair {
-  padding-top: 0;
-  line-height: 2.4;            /* tall enough that each wrapped row leaves room for its chord above */
-  margin: 0.1em 0;
+  margin: 0.4em 0 0.1em 0;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
-.song-body[data-show-chords="false"] .chord-pair { line-height: 1.45; }
 .syl {
-  position: relative;
   display: inline-block;
   vertical-align: top;
   white-space: normal;
   overflow-wrap: anywhere;
-  max-width: 100%;             /* a single very long word can still break inside */
+  max-width: 100%;
+  line-height: 1.0;
 }
-.syl-lyric { overflow-wrap: anywhere; word-break: break-word; }
 .syl-chord {
-  position: absolute;
-  top: -1.4em;
-  left: 0;
+  display: block;
+  min-height: 1em;             /* keep lyric baselines aligned even when this syllable has no chord */
   color: #6ea8ff;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-weight: 600;
   font-size: 0.9em;
   white-space: nowrap;
-  /* Keep the chord on one row even if its host syllable wraps. The
-   * column reference is the start of the syllable. */
+  line-height: 1.05;
+  margin-bottom: 1px;
 }
-.syl-lyric { color: inherit; overflow-wrap: anywhere; word-break: break-word; }
+.syl-lyric {
+  display: block;
+  color: inherit;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.25;
+}
+/* Hide chord row entirely when chords are off — also collapse the
+ * reserved space so lyric lines pack normally. */
+.song-body[data-show-chords="false"] .syl-chord { display: none; }
 
 /* Empty state (host has no active song / row got cleared) */
 .empty-state {
