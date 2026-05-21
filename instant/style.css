@@ -140,6 +140,17 @@ button#toggle-chords[aria-pressed="true"] { background: #2c5fff; border-color: #
  * chord row inside a chord-pair block. */
 .song-body[data-show-chords="false"] .line.chords { display: none; }
 
+/* In lyrics-only mode, suppress bracketed section labels like [Chorus]
+ * but preserve the visual gap so verses/choruses stay obviously separated.
+ * Mirrors the iOS player's render plan: lyricsOnly drops [bracketed]
+ * headers from the visible flow while keeping their section-gap. */
+.song-body[data-show-chords="false"] .line.section {
+  visibility: hidden;
+  font-style: normal;
+  font-size: 1em;
+  margin: 0;
+}
+
 /* Chord-over-syllable rendering.
  *
  * Each pair is a flow of inline-block "syllables". Within each syllable
