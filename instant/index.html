@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0a0a0a">
   <title>Love Drops — live</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='70' font-size='80' text-anchor='middle'%3E♫%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
   <header class="topbar">
@@ -32,6 +32,27 @@
 
   <div id="banner" class="banner hidden" role="status" aria-live="polite"></div>
 
+  <!-- Manual code-entry screen: shown when the URL has no /instant/<code>
+       segment (i.e. the viewer typed "lovedropsband.com/instant" or scanned
+       a QR that didn't register). Lets them type the 5-char code instead. -->
+  <div id="code-entry" class="code-entry hidden">
+    <div class="code-entry-card">
+      <h2>Enter share code</h2>
+      <p class="code-entry-hint">Ask the performer for the 5-character code shown on their device.</p>
+      <form id="code-entry-form" autocomplete="off">
+        <input id="code-entry-input" type="text" inputmode="text"
+               autocapitalize="off" autocorrect="off" spellcheck="false"
+               maxlength="5" placeholder="e.g. k4m9p" aria-label="Share code">
+        <button id="code-entry-go" type="submit">Go</button>
+      </form>
+      <p id="code-entry-error" class="code-entry-error hidden"></p>
+      <div id="code-entry-recents" class="code-entry-recents hidden">
+        <p class="code-entry-recents-label">Recent</p>
+        <div id="code-entry-recents-list" class="code-entry-recents-list"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- QR-share overlay: shows the current page URL so the viewer can
        hand the link to others around them without needing the original
        performer to re-show their QR. Hidden by default. -->
@@ -48,6 +69,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <!-- QR code generator (lazy-loaded on demand by main.js so it doesn't
        cost first-paint for the 99% of viewers who never tap "QR"). -->
-  <script src="main.js?v=9"></script>
+  <script src="main.js?v=10"></script>
 </body>
 </html>

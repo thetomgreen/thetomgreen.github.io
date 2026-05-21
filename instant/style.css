@@ -301,3 +301,103 @@ button#toggle-chords[aria-pressed="true"] { background: #2c5fff; border-color: #
   -webkit-tap-highlight-color: transparent;
 }
 .qr-close:hover, .qr-close:focus-visible { background: rgba(255, 255, 255, 0.25); outline: none; }
+
+/* Code-entry screen — shown when /instant has no code in the URL. */
+.code-entry {
+  position: fixed;
+  inset: 0;
+  background: #0a0a0a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+}
+.code-entry.hidden { display: none; }
+.code-entry-card {
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+.code-entry-card h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+.code-entry-hint {
+  margin: 0 0 20px 0;
+  font-size: 0.9rem;
+  color: #aaa;
+  line-height: 1.4;
+}
+#code-entry-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+#code-entry-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-align: center;
+  text-transform: lowercase;
+  padding: 14px 12px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  background: #141414;
+  color: #f5f5f5;
+  outline: none;
+}
+#code-entry-input:focus { border-color: #4a9eff; }
+#code-entry-go {
+  padding: 0 20px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  background: #4a9eff;
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+#code-entry-go:disabled { background: #2a2a2a; color: #666; cursor: default; }
+.code-entry-error {
+  margin: 0 0 12px 0;
+  font-size: 0.85rem;
+  color: #ff6b6b;
+}
+.code-entry-error.hidden { display: none; }
+.code-entry-recents { margin-top: 24px; }
+.code-entry-recents.hidden { display: none; }
+.code-entry-recents-label {
+  margin: 0 0 8px 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #777;
+}
+.code-entry-recents-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.code-entry-recent-chip {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  padding: 8px 14px;
+  border: 1px solid #2a2a2a;
+  border-radius: 999px;
+  background: #141414;
+  color: #f5f5f5;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.code-entry-recent-chip:hover, .code-entry-recent-chip:focus-visible {
+  background: #1f1f1f; border-color: #4a4a4a; outline: none;
+}

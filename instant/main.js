@@ -47,9 +47,98 @@
   })();
 
   if (!code) {
-    document.getElementById('song-title').textContent = 'No share code';
-    showBanner('error', 'This page needs a share code in the URL.');
+    showCodeEntry();
     return;
+  }
+
+  // -------------------------------------------------------------------
+  // Recents — persisted across visits so repeat audience members can
+  // re-enter a band's session in one tap from the code-entry screen.
+  // Written on successful load (see applyRow), read on no-code visits.
+  // -------------------------------------------------------------------
+  function loadRecents() {
+    try {
+      const raw = localStorage.getItem('instant.recents');
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(s => typeof s === 'string') : [];
+    } catch { return []; }
+  }
+  function rememberRecent(c) {
+    if (!c) return;
+    const cur = loadRecents().filter(x => x !== c);
+    cur.unshift(c);
+    localStorage.setItem('instant.recents', JSON.stringify(cur.slice(0, 5)));
+  }
+  function showCodeEntry() {
+    // Hide the live-mirror chrome — this is a different screen.
+    document.querySelector('.topbar')?.classList.add('hidden');
+    document.getElementById('scroll-area')?.classList.add('hidden');
+
+    const $entry   = document.getElementById('code-entry');
+    const $form    = document.getElementById('code-entry-form');
+    const $input   = document.getElementById('code-entry-input');
+    const $go      = document.getElementById('code-entry-go');
+    const $err     = document.getElementById('code-entry-error');
+    const $recents = document.getElementById('code-entry-recents');
+    const $list    = document.getElementById('code-entry-recents-list');
+
+    // Accept only the unambiguous Crockford-base32 alphabet the host uses
+    // (no 0/o/1/l/i). Anything else is silently stripped as the user types
+    // so they can't submit something the server will never accept.
+    const ALPHA_RE = /[^23456789abcdefghjkmnpqrstuvwxyz]/g;
+    const VALID_RE = /^[23456789abcdefghjkmnpqrstuvwxyz]{5}$/;
+
+    function setError(msg) {
+      if (msg) { $err.textContent = msg; $err.classList.remove('hidden'); }
+      else { $err.textContent = ''; $err.classList.add('hidden'); }
+    }
+    function updateGo() {
+      $go.disabled = !VALID_RE.test($input.value);
+    }
+    function go(c) {
+      if (!VALID_RE.test(c)) {
+        setError('Codes are 5 characters (letters/numbers, no 0/o/1/l/i).');
+        return;
+      }
+      // Navigate into the live mirror using the same `/instant/?b=…#code`
+      // URL shape the iOS app generates: hash for the code (so GH Pages
+      // doesn't need a path-rewrite rule), query for cache-busting (and
+      // also so a same-page submit causes a real reload rather than just
+      // a no-op hash change). Don't rememberRecent yet — wait until the
+      // load succeeds, so a typo'd code doesn't pollute recents.
+      location.assign('/instant/?b=' + Date.now() + '#' + c);
+    }
+
+    $input.addEventListener('input', () => {
+      const cleaned = $input.value.toLowerCase().replace(ALPHA_RE, '').slice(0, 5);
+      if (cleaned !== $input.value) $input.value = cleaned;
+      setError(null);
+      updateGo();
+    });
+    $form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      go($input.value);
+    });
+
+    const recents = loadRecents();
+    if (recents.length > 0) {
+      $recents.classList.remove('hidden');
+      $list.replaceChildren();
+      recents.forEach(c => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'code-entry-recent-chip';
+        btn.textContent = c;
+        btn.addEventListener('click', () => go(c));
+        $list.appendChild(btn);
+      });
+    }
+
+    updateGo();
+    $entry.classList.remove('hidden');
+    // iOS Safari respects focus-on-load only after a user gesture; harmless
+    // on desktop where it just places the caret in the input.
+    setTimeout(() => $input.focus(), 0);
   }
 
   // -------------------------------------------------------------------
@@ -272,6 +361,7 @@
         return;
       }
       applyRow(data);
+      rememberRecent(code);
       bumpDebug('refetch', 'sub=' + (data.song_subtitle ?? '∅'));
     } catch (e) {
       console.error('initial load failed', e);
