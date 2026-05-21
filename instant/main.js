@@ -499,12 +499,122 @@
   const CHORD_RE = /^(?:NC|N\.C\.|[A-G](?:#|b)?(?:maj|min|m|dim|aug|sus|add|Maj|Min|Add|Sus|Dim|Aug|MAJ|MIN|ADD|SUS|DIM|AUG)?\d*(?:\/[A-G](?:#|b)?)?)$/;
   const TRIM_PUNCT = /^[.,;:!?*()\[\]"'-]+|[.,;:!?*()\[\]"'-]+$/g;
 
+  // -------------------------------------------------------------------
+  // Section-header rules (port of iOS SongTextHeuristics.swift).
+  //
+  // A line counts as a section header when it's one of:
+  //   1. [Anything]                — always a header.
+  //   2. (Keyword)                 — parens around a known section keyword.
+  //   3. Keyword:                  — trailing colon.
+  //   4. Keyword + short tag       — e.g. "Verse 1", "Verse 2a".
+  // A bare keyword on its own ("Bridge") is NOT a header — could be a lyric.
+  //
+  // In lyrics-only mode, headers that are either bracketed OR a Verse/Chorus
+  // family keyword are suppressed (the lyrics already imply the structure)
+  // while keeping a visual section-gap. Bridge / Intro / Outro / etc. stay
+  // visible — they're navigational landmarks for the singer/audience.
+  // -------------------------------------------------------------------
+  const SECTION_KEYWORDS = [
+    'verse', 'chorus', 'bridge', 'intro', 'outro',
+    'pre-chorus', 'pre chorus', 'prechorus',
+    'tag', 'coda', 'interlude', 'instrumental', 'solo',
+    'refrain', 'hook', 'vamp', 'ending', 'break', 'turnaround',
+  ];
+  // Longest-first so "pre-chorus" wins over "chorus" / "pre".
+  const SECTION_KEYWORDS_SORTED = [...SECTION_KEYWORDS].sort((a, b) => b.length - a.length);
+  const LYRICS_HIDDEN_KEYWORDS = new Set([
+    'verse', 'chorus', 'pre-chorus', 'pre chorus', 'prechorus',
+    'post-chorus', 'post chorus', 'postchorus',
+  ]);
+
+  function splitOnSpacedDashes(s) {
+    let parts = [s];
+    for (const sep of [' -- ', ' - ', ' – ', ' — ']) {
+      parts = parts.flatMap(p => p.split(sep));
+    }
+    return parts.map(p => p.trim()).filter(p => p.length > 0);
+  }
+  function keywordAndTag(part) {
+    const lower = part.toLowerCase();
+    for (const kw of SECTION_KEYWORDS_SORTED) {
+      if (lower === kw) return { keyword: kw, tag: '' };
+      if (lower.startsWith(kw)) {
+        const remainder = lower.slice(kw.length).trim();
+        if (remainder === '') return { keyword: kw, tag: '' };
+        if (remainder.length <= 6 && /^[\p{L}\p{N}\s]+$/u.test(remainder)) {
+          return { keyword: kw, tag: remainder };
+        }
+      }
+    }
+    return { keyword: '', tag: '' };
+  }
+  function isSectionPart(s) {
+    return keywordAndTag(s).keyword !== '';
+  }
+  function isSectionHeader(raw) {
+    const trimmed = raw.trim();
+    if (trimmed === '') return false;
+    // Rule 1: bracketed.
+    if (trimmed.startsWith('[') && trimmed.endsWith(']') && trimmed.length >= 2) return true;
+    // Strip parens for keyword check.
+    let core = trimmed;
+    if (core.startsWith('(') && core.endsWith(')') && core.length >= 2) {
+      core = core.slice(1, -1).trim();
+    }
+    if (core.endsWith(':')) core = core.slice(0, -1).trim();
+    if (isSectionPart(core)) return true;
+    // Compound like "Verse 1 - Verse 1" — every dash-part is a header.
+    const parts = splitOnSpacedDashes(core);
+    if (parts.length > 1 && parts.every(isSectionPart)) return true;
+    return false;
+  }
+  function normalizeSectionHeader(trimmed) {
+    let core = trimmed;
+    if (core.startsWith('[') && core.endsWith(']') && core.length >= 2) {
+      core = core.slice(1, -1).trim();
+    } else if (core.startsWith('(') && core.endsWith(')') && core.length >= 2) {
+      core = core.slice(1, -1).trim();
+    }
+    if (core.endsWith(':')) core = core.slice(0, -1).trim();
+
+    const parts = splitOnSpacedDashes(core);
+    if (parts.length <= 1) return core;
+
+    // Dedup "Verse 1 - Verse 1" → "Verse 1", "Pre-chorus - Pre-chorus 1" →
+    // "Pre-chorus 1". Keep distinct-tag compounds ("Verse 1 - Verse 2") as-is.
+    const infos = parts.map(keywordAndTag);
+    const firstKw = infos[0].keyword;
+    if (!firstKw) return core;
+    if (!infos.every(i => i.keyword === firstKw)) return core;
+    const nonEmptyTags = new Set(infos.map(i => i.tag).filter(t => t !== ''));
+    if (nonEmptyTags.size > 1) return core;
+    // Prefer the tagged part (more informative).
+    const tagged = infos.findIndex(i => i.tag !== '');
+    return tagged >= 0 ? parts[tagged] : parts[0];
+  }
+  function isHiddenInLyricsView(normalized) {
+    const parts = splitOnSpacedDashes(normalized);
+    const candidates = parts.length === 0 ? [normalized] : parts;
+    const keywords = candidates.map(c => keywordAndTag(c).keyword);
+    if (keywords.some(k => k === '')) return false;
+    return keywords.every(k => LYRICS_HIDDEN_KEYWORDS.has(k));
+  }
+  /** Returns { text, hideInLyricsMode } for a recognized section header. */
+  function sectionDisplayInfo(raw) {
+    const trimmed = raw.trim();
+    const isBracketed = trimmed.startsWith('[') && trimmed.endsWith(']') && trimmed.length >= 2;
+    const normalized = normalizeSectionHeader(trimmed);
+    const hideInLyricsMode = isBracketed || isHiddenInLyricsView(normalized);
+    return { text: normalized, hideInLyricsMode };
+  }
+
   /** Returns 'chords' | 'lyrics' | 'blank' | 'section'. */
   function classify(line) {
     const trimmed = line.trim();
     if (trimmed === '') return 'blank';
-    // Bracketed section labels like [Verse 1] / [Chorus] / [Guitar Solo].
-    if (/^\[[^\]]+\]$/.test(trimmed)) return 'section';
+    // Section headers — bracketed plus the broader iOS heuristic
+    // (Verse/Chorus/Pre-chorus/... with tags, parens, or trailing colon).
+    if (isSectionHeader(trimmed)) return 'section';
 
     // Tokenize; collapse "(...)" groups to one token.
     const tokens = [];
@@ -646,7 +756,16 @@
         div.className = 'line ' + cur.kind;
         div.dataset.rawLineStart = String(i);
         div.dataset.rawLineEnd = String(i);
-        div.textContent = cur.kind === 'blank' ? ' ' : cur.raw;
+        if (cur.kind === 'section') {
+          const info = sectionDisplayInfo(cur.raw);
+          div.textContent = info.text || ' ';
+          // Drives the CSS rule that collapses the label into a blank-line
+          // gap in lyrics-only mode. Bridge / Intro / Outro / Instrumental
+          // etc. don't get the flag and stay visible.
+          if (info.hideInLyricsMode) div.dataset.sectionHiddenInLyrics = 'true';
+        } else {
+          div.textContent = cur.kind === 'blank' ? ' ' : cur.raw;
+        }
         frag.appendChild(div);
         i += 1;
       }
