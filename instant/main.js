@@ -507,12 +507,14 @@
   //   2. (Keyword)                 — parens around a known section keyword.
   //   3. Keyword:                  — trailing colon.
   //   4. Keyword + short tag       — e.g. "Verse 1", "Verse 2a".
-  // A bare keyword on its own ("Bridge") is NOT a header — could be a lyric.
+  //   5. A bare keyword on its own — "Bridge", "Chorus", "Intro", etc.
+  //      In practice songs don't use those words as lyrics, and a false
+  //      positive only renders italic with a small gap, not destructive.
   //
-  // In lyrics-only mode, headers that are either bracketed OR a Verse/Chorus
-  // family keyword are suppressed (the lyrics already imply the structure)
-  // while keeping a visual section-gap. Bridge / Intro / Outro / etc. stay
-  // visible — they're navigational landmarks for the singer/audience.
+  // In lyrics-only mode, bracketed headers and the Verse/Chorus family are
+  // suppressed (the lyrics imply the structure) while keeping a visual
+  // section-gap. Bridge / Intro / Outro / etc. stay visible as italic
+  // navigational landmarks the singer/audience cues off.
   // -------------------------------------------------------------------
   const SECTION_KEYWORDS = [
     'verse', 'chorus', 'bridge', 'intro', 'outro',
