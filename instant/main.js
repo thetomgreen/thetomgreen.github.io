@@ -317,6 +317,7 @@
   // -------------------------------------------------------------------
   /** @type {{ id: string, song_title: string|null, song_raw_text: string|null, length_seconds: number, tempo_acceleration: number, expires_at: string } | null} */
   let row = null;
+  let currentTranspose = 0;            // semitone shift applied to chords
   let serverElapsed = 0;
   let serverPlaying = false;
   let serverInPlay = false;
@@ -387,6 +388,9 @@
     $title.textContent = data.song_title || ' ';
 
     const isList = (data.song_subtitle === LIST_SENTINEL);
+    const newTranspose = data.transpose_semitones || 0;
+    const transposeChanged = newTranspose !== currentTranspose;
+    currentTranspose = newTranspose;
     const contentChanged = (data.song_raw_text !== renderedSongRawText) ||
                            (isList !== ($body.dataset.mode === 'list'));
 
@@ -402,7 +406,10 @@
       lastTickAt = performance.now();
     }
 
-    if (contentChanged) {
+    // Re-render on a new song/view, or when only the transpose changed
+    // (same text, different key — the audience must follow the performer's
+    // live key change without a song switch).
+    if (contentChanged || (transposeChanged && !isList)) {
       if (isList) {
         renderList(data.song_raw_text || '');
         $body.dataset.mode = 'list';
@@ -417,9 +424,10 @@
       // Re-measure DOM line positions and snap to the host's current
       // line on next frame (rather than starting at top and slewing
       // there — which made joining mid-song feel like the page was
-      // "racing to catch up").
+      // "racing to catch up"). A transpose-only re-render keeps the
+      // viewer's current position (no snap).
       rebuildLineAnchors();
-      needSnap = true;
+      if (contentChanged) needSnap = true;
     }
     // Show/hide the chord toggle — pointless in list mode.
     $toggle.style.visibility = isList ? 'hidden' : 'visible';
@@ -498,6 +506,70 @@
   // -------------------------------------------------------------------
   const CHORD_RE = /^(?:NC|N\.C\.|[A-G](?:#|b)?(?:maj|min|m|dim|aug|sus|add|Maj|Min|Add|Sus|Dim|Aug|MAJ|MIN|ADD|SUS|DIM|AUG)?\d*(?:\/[A-G](?:#|b)?)?)$/;
   const TRIM_PUNCT = /^[.,;:!?*()\[\]"'-]+|[.,;:!?*()\[\]"'-]+$/g;
+
+  // -------------------------------------------------------------------
+  // Chord transposition — JS port of iOS ChordTransposer.swift. Shifts a
+  // chord token by N semitones, preserving the quality/extension/bass and
+  // the accidental flavour (sharps stay sharp, flats stay flat; naturals
+  // default to sharps). `transpose_semitones` arrives in the share row so
+  // the audience sees the same key the performer is displaying.
+  // -------------------------------------------------------------------
+  const SHARP_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const FLAT_NAMES  = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+  function pitchClass(root) {
+    let i = SHARP_NAMES.indexOf(root);
+    if (i >= 0) return i;
+    i = FLAT_NAMES.indexOf(root);
+    return i >= 0 ? i : null;
+  }
+
+  function shiftedRoot(chord, semitones, preferFlats) {
+    const first = chord[0];
+    if (!first || first < 'A' || first > 'G') return null;
+    let rootLen = 1, rootName = first;
+    if (chord.length >= 2 && (chord[1] === '#' || chord[1] === 'b')) {
+      rootName += chord[1];
+      rootLen = 2;
+    }
+    const pc = pitchClass(rootName);
+    if (pc === null) return null;
+    const shifted = ((pc + semitones) % 12 + 12) % 12;
+    const newName = (preferFlats ? FLAT_NAMES : SHARP_NAMES)[shifted];
+    return { newName, suffix: chord.slice(rootLen) };
+  }
+
+  /** Transpose a single chord token. Non-chord tokens returned unchanged. */
+  function transposeChord(token, semitones) {
+    if (!semitones || !token) return token;
+    if (token === 'NC' || token === 'N.C.') return token;
+    const slash = token.indexOf('/');
+    const main = slash >= 0 ? token.slice(0, slash) : token;
+    const bass = slash >= 0 ? token.slice(slash + 1) : null;
+    const preferFlats = token.includes('b') && !token.startsWith('b');
+    const m = shiftedRoot(main, semitones, preferFlats);
+    if (!m) return token;
+    let out = m.newName + m.suffix;
+    if (bass !== null) {
+      const b = shiftedRoot(bass, semitones, preferFlats);
+      out += '/' + (b ? b.newName + b.suffix : bass);
+    }
+    return out;
+  }
+
+  /** Transpose a whole chord-only line, preserving each chord's start column
+   *  (chord-only lines render in column alignment with no lyric beneath). */
+  function transposeChordLineString(raw, semitones) {
+    if (!semitones) return raw;
+    const tokens = tokenizeChordLineFull(raw);
+    if (tokens.length === 0) return raw;
+    let out = '';
+    for (const t of tokens) {
+      if (out.length < t.col) out += ' '.repeat(t.col - out.length);
+      out += transposeChord(t.text, semitones);
+    }
+    return out;
+  }
 
   // -------------------------------------------------------------------
   // Section-header rules (port of iOS SongTextHeuristics.swift).
@@ -733,7 +805,7 @@
       const next = tokens[k + 1];
       const endCol = next ? next.col : Math.max(lyricRaw.length, tok.col + tok.text.length);
       const sub = lyricRaw.substring(tok.col, endCol);
-      appendChunk(tok.text, sub);
+      appendChunk(transposeChord(tok.text, currentTranspose), sub);
     }
     return pair;
   }
@@ -765,6 +837,8 @@
           // gap in lyrics-only mode. Bridge / Intro / Outro / Instrumental
           // etc. don't get the flag and stay visible.
           if (info.hideInLyricsMode) div.dataset.sectionHiddenInLyrics = 'true';
+        } else if (cur.kind === 'chords') {
+          div.textContent = transposeChordLineString(cur.raw, currentTranspose);
         } else {
           div.textContent = cur.kind === 'blank' ? ' ' : cur.raw;
         }
