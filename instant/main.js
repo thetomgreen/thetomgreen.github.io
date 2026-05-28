@@ -376,6 +376,23 @@
   const LIST_SENTINEL = '__list__';
 
   function applyRow(data) {
+    // Live ticks are the authoritative real-time signal. If we've seen a tick
+    // within the last ~8 s saying the host is in play mode, ignore any row
+    // that claims list mode — that's a stale write (e.g. a tab change pushed
+    // during a navigation blip, or a 20-s refetch returning a pre-play
+    // snapshot). Without this guard the page flipped into list view and
+    // jumped to scrollTop=0 mid-playback until the next song row arrived,
+    // which the host saw as the audience "jumping to the top, then catching
+    // up". Don't touch `row` either — its length_seconds=0 would break the
+    // playback target calculation.
+    const rowSaysList = (data.song_subtitle === LIST_SENTINEL);
+    const liveSongTick = (lastTickAt > 0)
+      && (performance.now() - lastTickAt < 8000)
+      && serverInPlay;
+    if (rowSaysList && liveSongTick) {
+      bumpDebug('applyRow', 'IGNORED stale list-mode row during live play');
+      return;
+    }
     row = data;
     bumpDebug('applyRow', 'sub=' + (data.song_subtitle ?? '∅'));
     if (new Date(data.expires_at) < new Date()) {
