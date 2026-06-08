@@ -34,6 +34,12 @@ body {
   min-width: 0;
   flex: 1 1 auto;              /* shrink so long titles ellipsize, not overflow */
 }
+.title-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;                /* required inside flex for ellipsis */
+  flex: 1 1 auto;
+}
 .title-wrap h1 {
   margin: 0;
   font-size: 0.95rem;
@@ -42,9 +48,21 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;                /* required inside flex for ellipsis */
-  flex: 1 1 auto;
+  min-width: 0;
 }
+.song-subtitle {
+  margin: 0;
+  font-size: 0.78rem;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: #8a8a8e;              /* matches the iOS app's .secondary tone */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.song-subtitle.hidden { display: none; }
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: #444;

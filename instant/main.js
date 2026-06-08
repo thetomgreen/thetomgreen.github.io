@@ -145,6 +145,7 @@
   // DOM refs + per-viewer state
   // -------------------------------------------------------------------
   const $title    = document.getElementById('song-title');
+  const $subtitle = document.getElementById('song-subtitle');
   const $body     = document.getElementById('song-body');
   const $empty    = document.getElementById('empty-state');
   const $scroll   = document.getElementById('scroll-area');
@@ -323,6 +324,19 @@
   let serverInPlay = false;
   let serverScrollFraction = null;     // non-null only when out of play mode
   let lastTickAt = 0;                  // performance.now() of last server tick
+  let lastRowAt = 0;                   // performance.now() of last row event/refetch
+  // The row's expires_at is a 4-hour TTL that only gets bumped on row
+  // WRITES (song change / list view / transpose change) — ticks don't
+  // refresh it. So on a session that's been on the same song for >4 hours
+  // the row goes stale even though the host is actively pushing ticks.
+  // Treat any activity (tick OR row event) within this window as proof
+  // the session is alive, regardless of what expires_at says.
+  const ACTIVITY_LIVE_WINDOW_MS = 90_000;  // 90s of silence ⇒ might be dead
+  function sessionLooksLive() {
+    const now = performance.now();
+    return (now - lastTickAt) < ACTIVITY_LIVE_WINDOW_MS
+        || (now - lastRowAt)  < ACTIVITY_LIVE_WINDOW_MS;
+  }
   let renderedSongRawText = null;      // re-render only when this changes
   /// Line-anchor positions in the rendered DOM. One entry per host-side
   /// rawText line. centerY = the y coordinate to put under the viewport
@@ -338,6 +352,17 @@
   /// of slewing. Set on initial load and on song switch so a freshly-arrived
   /// viewer doesn't start at the top and slowly catch up.
   let needSnap = true;
+  /// False until the first applyRow with content lands. The initial join
+  /// snaps to the host's mid-song position (so a late joiner doesn't see a
+  /// scroll-from-top animation). Every subsequent song change starts at
+  /// the top — when the master picks a new song, the audience reads from
+  /// line 1, not from wherever the previous song's scroll happened to be
+  /// or from wherever the host is mid-performance.
+  let hasReceivedFirstRow = false;
+  /// Raw-text line index of the host song's "based on …" line, if any.
+  /// Surfaced as a subtitle above the body and skipped from renderSong's
+  /// output (the iOS player handles it the same way).
+  let basedOnLineIndex = -1;
 
   // -------------------------------------------------------------------
   // Supabase client + subscriptions
@@ -394,8 +419,21 @@
       return;
     }
     row = data;
+    lastRowAt = performance.now();
     bumpDebug('applyRow', 'sub=' + (data.song_subtitle ?? '∅'));
-    if (new Date(data.expires_at) < new Date()) {
+    // expires_at past is NOT a reliable "ended" signal — it just means
+    // no row WRITE has happened in ~4 hours. Two distinct cases:
+    //   (a) Host explicitly stopped sharing → expires_at is forced to
+    //       epoch 0 (1970). Definitely ended.
+    //   (b) Natural staleness on a long-running session → expires_at is
+    //       past but recent-ish. Host may still be pushing ticks.
+    // Treat (a) as immediately ended. For (b), suppress the banner if
+    // we've seen any tick/row activity recently — only show "ended"
+    // when both expires_at is past AND the session has gone silent.
+    const expiresAt = new Date(data.expires_at);
+    const stoppedExplicitly = expiresAt.getTime() < 1_000_000;  // ≈ epoch 0
+    const naturallyExpired = expiresAt < new Date();
+    if (stoppedExplicitly || (naturallyExpired && !sessionLooksLive())) {
       showBanner('info', 'Session ended.');
       setStatus('idle', 'Ended');
     } else {
@@ -430,21 +468,36 @@
       if (isList) {
         renderList(data.song_raw_text || '');
         $body.dataset.mode = 'list';
+        updateSubtitle('');
         // Lists are static — show them from the top, not wherever the
         // previous song's scrollTop happened to leave us.
         $scroll.scrollTop = 0;
       } else {
+        const basedOn = extractBasedOn(data.song_raw_text || '');
+        basedOnLineIndex = basedOn.index;
         renderSong(data.song_raw_text || '');
         $body.dataset.mode = 'song';
+        updateSubtitle(basedOn.text);
       }
       renderedSongRawText = data.song_raw_text || '';
-      // Re-measure DOM line positions and snap to the host's current
-      // line on next frame (rather than starting at top and slewing
-      // there — which made joining mid-song feel like the page was
-      // "racing to catch up"). A transpose-only re-render keeps the
-      // viewer's current position (no snap).
+      // Re-measure DOM line positions before deciding scroll position.
+      // A transpose-only re-render keeps the viewer's current position.
       rebuildLineAnchors();
-      if (contentChanged) needSnap = true;
+      if (contentChanged) {
+        if (!hasReceivedFirstRow) {
+          // Initial join: snap to host's mid-song position so a late
+          // joiner doesn't see the page race down from the top.
+          needSnap = true;
+        } else {
+          // Subsequent song change: start at the top regardless of
+          // where the host's elapsed maps to. When the master picks a
+          // new song mid-performance, the audience reads from line 1.
+          $scroll.scrollTop = 0;
+          displayedLineFloat = 0;
+          needSnap = false;
+        }
+        hasReceivedFirstRow = true;
+      }
     }
     // Show/hide the chord toggle — pointless in list mode.
     $toggle.style.visibility = isList ? 'hidden' : 'visible';
@@ -454,6 +507,25 @@
     const isEmpty = !data.song_title && !data.song_raw_text;
     $empty.classList.toggle('hidden', !isEmpty);
     $body.style.display = isEmpty ? 'none' : '';
+  }
+
+  // Test hook — only when ?debug=1. Lets Playwright drive applyRow with
+  // synthetic rows without standing up a Supabase fixture, so we can
+  // verify scroll-to-top on song change, subtitle extraction, and
+  // no-jump slew behavior end-to-end.
+  if (debugEnabled) {
+    window.__applyRow = applyRow;
+    window.__getScrollTop = () => $scroll.scrollTop;
+    window.__getSubtitle = () => ({
+      hidden: $subtitle?.classList.contains('hidden'),
+      text: $subtitle?.textContent,
+    });
+    window.__setServerTick = (elapsed, playing = true, inPlay = true) => {
+      serverElapsed = elapsed;
+      serverPlaying = !!playing;
+      serverInPlay = !!inPlay;
+      lastTickAt = performance.now();
+    };
   }
 
   // Subscribe to row-level changes (song switches, start/stop).
@@ -699,6 +771,39 @@
     return { text: normalized, hideInLyricsMode };
   }
 
+  /// Scan the raw text for the song's "based on …" line and return its
+  /// text + raw-line index. Matches the iOS-app heuristic: the first
+  /// non-blank, non-section lyric line. If it begins with "based on"
+  /// (case-insensitive), surface it as a subtitle above the body and
+  /// skip it from renderSong's output. Returns {text:'', index:-1}
+  /// when no based-on line is present (e.g. song begins with a chord
+  /// line or a regular lyric).
+  function extractBasedOn(rawText) {
+    const lines = rawText.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const kind = classify(lines[i]);
+      if (kind === 'blank' || kind === 'section') continue;
+      if (kind === 'chords') return { text: '', index: -1 };
+      const trimmed = lines[i].trim();
+      if (trimmed.toLowerCase().startsWith('based on')) {
+        return { text: trimmed, index: i };
+      }
+      return { text: '', index: -1 };
+    }
+    return { text: '', index: -1 };
+  }
+
+  function updateSubtitle(text) {
+    if (!$subtitle) return;
+    if (text) {
+      $subtitle.textContent = text;
+      $subtitle.classList.remove('hidden');
+    } else {
+      $subtitle.textContent = '';
+      $subtitle.classList.add('hidden');
+    }
+  }
+
   /** Returns 'chords' | 'lyrics' | 'blank' | 'section'. */
   function classify(line) {
     const trimmed = line.trim();
@@ -833,6 +938,8 @@
     const frag = document.createDocumentFragment();
     let i = 0;
     while (i < parsed.length) {
+      // Skip the "based on …" line — surfaced as a subtitle above.
+      if (i === basedOnLineIndex) { i += 1; continue; }
       const cur = parsed[i];
       const next = parsed[i + 1];
       // Pair a chord line with the lyric line immediately under it.
@@ -1012,34 +1119,27 @@
       needSnap = false;
     } else {
       const delta = target - displayedLineFloat;
-      // Snap rather than slew when the gap is large (seek, song switch,
-      // late join). The slew is for "follow at natural speed within a
-      // line or two of the host"; bigger jumps need to land immediately.
-      if (Math.abs(delta) > 4) {
-        displayedLineFloat = target;
-      } else {
-        // Max lines per second the slew can close at. Big enough to catch
-        // up after a small drift but capped so the page never feels like
-        // it's racing. Roughly 2× the natural song-line speed.
-        const linesPerSec = lineAnchors.length / Math.max(30, row.length_seconds || 180);
-        const maxStep = linesPerSec * 4 * dt;
-        const step = delta >= 0 ? Math.min(delta, maxStep) : Math.max(delta, -maxStep);
-        displayedLineFloat += step;
-      }
+      // No line-space jump. Per user feedback, when the master scrolls
+      // extra (manually) the slave should always animate to the new
+      // position — never teleport. For big deltas we boost the slew rate
+      // so it arrives quickly without feeling like a jump cut. The boost
+      // threshold is measured in pixels (>1 screen height) so it scales
+      // with viewport size.
+      const baseLinesPerSec = lineAnchors.length / Math.max(30, row.length_seconds || 180);
+      const baseMaxStep = baseLinesPerSec * 4 * dt;
+      const pixelDelta = Math.abs(
+        lineFloatToScrollTop(target) - lineFloatToScrollTop(displayedLineFloat)
+      );
+      const boost = pixelDelta > $scroll.clientHeight ? 1.5 : 1.0;
+      const maxStep = baseMaxStep * boost;
+      const step = delta >= 0 ? Math.min(delta, maxStep) : Math.max(delta, -maxStep);
+      displayedLineFloat += step;
     }
 
-    const targetTop = lineFloatToScrollTop(displayedLineFloat);
-    const currentTop = $scroll.scrollTop;
-    const topDelta = targetTop - currentTop;
-    // The line-space slew already handles smoothness; we can apply the
-    // scroll position directly without an additional pixel-space slew.
-    // But if the line layout shifted (resize, font change), snap so the
-    // user doesn't see a slow drift.
-    if (Math.abs(topDelta) > $scroll.clientHeight * 2) {
-      $scroll.scrollTop = targetTop;
-    } else {
-      $scroll.scrollTop = targetTop;
-    }
+    // The line-space slew above already produces a smoothly-advancing
+    // displayedLineFloat — applying the derived scrollTop directly is
+    // smooth by construction. No pixel-space slew or snap branch needed.
+    $scroll.scrollTop = lineFloatToScrollTop(displayedLineFloat);
 
     // Track "fresh" state for the warning indicator.
     if ((now - lastTickAt) < 4000) lastSeenTickAt = now;
@@ -1047,11 +1147,16 @@
   requestAnimationFrame(loop);
 
   // -------------------------------------------------------------------
-  // Expiry watchdog — flip to "session ended" once expires_at passes.
+  // Expiry watchdog — flip to "session ended" once we're confident the
+  // session is dead. See applyRow for the (explicit-stop vs natural-
+  // staleness) distinction.
   // -------------------------------------------------------------------
   setInterval(() => {
     if (!row) return;
-    if (new Date(row.expires_at) < new Date()) {
+    const expiresAt = new Date(row.expires_at);
+    const stoppedExplicitly = expiresAt.getTime() < 1_000_000;
+    const naturallyExpired = expiresAt < new Date();
+    if (stoppedExplicitly || (naturallyExpired && !sessionLooksLive())) {
       showBanner('info', 'Session ended.');
       setStatus('idle', 'Ended');
     }
