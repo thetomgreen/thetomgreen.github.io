@@ -193,6 +193,12 @@
   /// who wants to read at their own pace doesn't have to re-flip it
   /// every time they reopen the page.
   let trackingEnabled = localStorage.getItem(lsKey('trackMaster')) !== 'false';
+  /// Master-side override carried in every TickPayload. Default `true`
+  /// for legacy iOS builds that don't include the field. When `false`,
+  /// the master has paused live position-tracking for ALL followers —
+  /// the per-viewer toggle becomes irrelevant until the master flips
+  /// it back on.
+  let masterFollowEnabled = true;
   /// Per-song runtime detachment. Goes true when the user manually
   /// scrolls during master playback. Cleared on song change OR when
   /// the master leaves play mode (= "hit stop").
@@ -276,9 +282,27 @@
   // position in the song; when OFF, it scrolls at the autonomous time-
   // based rate and ignores master ticks. Flipping back ON re-snaps so
   // the viewer doesn't slowly slew across the song to catch up.
+  //
+  // The master can ALSO override this from their side — when their
+  // toggle is off, every follower behaves as if detached regardless
+  // of the per-viewer setting. `applyMasterStatus` surfaces that
+  // state on the toggle button (dimmed) and as a small note next to
+  // the song title so the viewer knows why their toggle isn't taking
+  // effect.
   const $toggleFollow = document.getElementById('toggle-follow');
   function applyFollowToggle() {
-    if ($toggleFollow) $toggleFollow.setAttribute('aria-pressed', trackingEnabled ? 'true' : 'false');
+    if (!$toggleFollow) return;
+    $toggleFollow.setAttribute('aria-pressed', trackingEnabled ? 'true' : 'false');
+    applyMasterStatus();
+  }
+  function applyMasterStatus() {
+    if (!$toggleFollow) return;
+    // Dim the per-viewer toggle when the master has paused tracking
+    // — the personal preference is still stored, just not in effect.
+    $toggleFollow.style.opacity = masterFollowEnabled ? '' : '0.5';
+    $toggleFollow.title = masterFollowEnabled
+      ? 'Follow the master\'s position in the song'
+      : 'Performer paused live position-tracking';
   }
   applyFollowToggle();
   if ($toggleFollow) {
@@ -430,7 +454,7 @@
       `last: ${kind}${info ? ' ' + info : ''}\n` +
       `sub: ${(r.song_subtitle ?? '∅').slice(0,30)} | title: ${(r.song_title ?? '∅').slice(0,30)}\n` +
       `mode: ${$body.dataset.mode || '?'} | lines: ${lineAnchors.length}\n` +
-      `track:${trackingEnabled ? 'on' : 'off'} det:${detachedDuringSong ? 'Y' : 'n'} fc:${fastCatchUp ? 'Y' : 'n'} sP:${serverPlaying ? 'Y' : 'n'} sI:${serverInPlay ? 'Y' : 'n'}\n` +
+      `track:${trackingEnabled ? 'on' : 'off'} masterFollow:${masterFollowEnabled ? 'on' : 'off'} det:${detachedDuringSong ? 'Y' : 'n'} fc:${fastCatchUp ? 'Y' : 'n'} sP:${serverPlaying ? 'Y' : 'n'} sI:${serverInPlay ? 'Y' : 'n'}\n` +
       `iOS:\n${iosLastLines.slice(-6).join('\n')}`;
   }
 
@@ -692,6 +716,7 @@
     };
     window.__getFollowState = () => ({
       trackingEnabled,
+      masterFollowEnabled,
       detachedDuringSong,
       fastCatchUp,
       prevServerPlaying,
@@ -701,6 +726,15 @@
       displayedLineFloat,
     });
     window.__simulateManualScroll = () => noteManualScroll();
+    window.__setMasterFollow = (enabled) => {
+      const prev = masterFollowEnabled;
+      masterFollowEnabled = !!enabled;
+      if (!prev && masterFollowEnabled && trackingEnabled && !detachedDuringSong) {
+        needSnap = true;
+        fastCatchUp = false;
+      }
+      applyMasterStatus();
+    };
   }
 
   // Subscribe to row-level changes (song switches, start/stop).
@@ -730,6 +764,19 @@
       serverPlaying = !!p.playing;
       serverInPlay  = !!p.in_play_mode;
       serverScrollFraction = (typeof p.scroll_fraction === 'number') ? p.scroll_fraction : null;
+      // Master-side follow toggle. Absent ⇒ legacy iOS, default true.
+      // A false→true rising edge re-snaps tracking followers so they
+      // land cleanly on the master's current position instead of
+      // slewing across whatever drift accumulated while detached.
+      if (typeof p.follow_master_position === 'boolean') {
+        const prevMaster = masterFollowEnabled;
+        masterFollowEnabled = p.follow_master_position;
+        if (!prevMaster && masterFollowEnabled && trackingEnabled && !detachedDuringSong) {
+          needSnap = true;
+          fastCatchUp = false;
+        }
+        applyMasterStatus();
+      }
       lastTickAt = performance.now();
       hideBanner();
       setStatus('live', 'Live');
@@ -1292,7 +1339,10 @@
     // position when paused so we don't drift forward over a long
     // pause. Per-song detachment is reset on song change and on
     // master "stop" (handled in the transition helper).
-    const inDetachedMode = !trackingEnabled || detachedDuringSong;
+    // Master-side override wins over the per-viewer toggle: when the
+    // performer's "Followers track my position" is off, every viewer
+    // is detached regardless of their personal Follow button.
+    const inDetachedMode = !masterFollowEnabled || !trackingEnabled || detachedDuringSong;
     if (inDetachedMode) {
       if (serverPlaying) {
         displayedLineFloat = Math.min(
