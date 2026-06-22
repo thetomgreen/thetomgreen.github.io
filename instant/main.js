@@ -167,6 +167,54 @@
   applyZoom();
   applyChordsToggle();
 
+  // -------------------------------------------------------------------
+  // Follow-master state machine
+  //
+  // Three modes for the scroll loop:
+  //
+  //   1. NORMAL    — toggle on, no manual override. Chase the master's
+  //                  target position via slew with two boost tiers (see
+  //                  the loop for thresholds).
+  //   2. CATCH-UP  — sub-mode of NORMAL. Sticky once activated: when the
+  //                  master is >1.5 screens ahead, slew at 3.75x the
+  //                  base rate (= 2.5x the existing "faster" tier of
+  //                  1.5x) until the target is reached.
+  //   3. DETACHED  — toggle off OR per-song "user scrolled mid-play"
+  //                  state. Ignore master target; advance at the
+  //                  autonomous time-based rate while the master is
+  //                  playing. Hold position when paused.
+  //
+  // Per-song detachment is cleared on song change and on master "stop"
+  // (i.e. when serverInPlay falls). Per-viewer toggle persists across
+  // sessions (localStorage).
+  // -------------------------------------------------------------------
+
+  /// Per-viewer toggle. Default ON. Persists across visits so a viewer
+  /// who wants to read at their own pace doesn't have to re-flip it
+  /// every time they reopen the page.
+  let trackingEnabled = localStorage.getItem(lsKey('trackMaster')) !== 'false';
+  /// Per-song runtime detachment. Goes true when the user manually
+  /// scrolls during master playback. Cleared on song change OR when
+  /// the master leaves play mode (= "hit stop").
+  let detachedDuringSong = false;
+  /// Edge-detection bookkeeping for rising-edge "master hit play" snap
+  /// and falling-edge "master hit stop" detach-reset.
+  let prevServerPlaying = false;
+  let prevServerInPlay = false;
+  /// Sticky fast-catch-up flag. Set when target is >1.5 viewport heights
+  /// ahead; stays set until displayed has actually reached target. This
+  /// is what makes the catch-up "continue at this speed until the
+  /// target is reached" rather than oscillating between tiers as the
+  /// gap closes.
+  let fastCatchUp = false;
+  /// Threshold (in line-floats) for "target reached" when releasing the
+  /// sticky catch-up state. Half a line is tight enough to feel like an
+  /// arrival without flickering at the boundary on the next frame.
+  const CATCH_UP_RELEASE_LINES = 0.5;
+  /// Multiplier the catch-up tier applies on top of the base slew rate.
+  /// 2.5× the existing "faster" tier of 1.5× per spec.
+  const FAST_CATCH_UP_MULTIPLIER = 1.5 * 2.5;
+
   $zoomIn.addEventListener('click', () => { zoom = clamp(zoom + 2, 12, 64); applyZoom(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
   $zoomOut.addEventListener('click', () => { zoom = clamp(zoom - 2, 12, 64); applyZoom(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
 
@@ -223,6 +271,96 @@
     localStorage.setItem(lsKey('showChords'), String(showChords));
     applyChordsToggle();
   });
+
+  // Follow-master toggle. When ON, the page chases the master's
+  // position in the song; when OFF, it scrolls at the autonomous time-
+  // based rate and ignores master ticks. Flipping back ON re-snaps so
+  // the viewer doesn't slowly slew across the song to catch up.
+  const $toggleFollow = document.getElementById('toggle-follow');
+  function applyFollowToggle() {
+    if ($toggleFollow) $toggleFollow.setAttribute('aria-pressed', trackingEnabled ? 'true' : 'false');
+  }
+  applyFollowToggle();
+  if ($toggleFollow) {
+    $toggleFollow.addEventListener('click', () => {
+      trackingEnabled = !trackingEnabled;
+      localStorage.setItem(lsKey('trackMaster'), String(trackingEnabled));
+      applyFollowToggle();
+      if (trackingEnabled) {
+        // Re-engaging: clear any runtime detach + the catch-up latch,
+        // then snap on the next frame so the viewer lands on the
+        // master's current position instead of slewing across the song.
+        detachedDuringSong = false;
+        fastCatchUp = false;
+        needSnap = true;
+      }
+    });
+  }
+
+  // Manual-scroll detector. While the master is playing, any user-
+  // initiated scroll gesture flips this viewer into the per-song
+  // detached state (autonomous rate, no master tracking) until the
+  // song changes or the master leaves play mode. Only events that
+  // can ONLY come from a real user gesture count — `scroll` events
+  // also fire from our own scrollTop assignment in the loop, so we
+  // never listen for those directly.
+  const SCROLL_KEYS = new Set([
+    'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar',
+  ]);
+  function noteManualScroll() {
+    // Only counts during actual playback per spec ("if a follower
+    // scrolls the song manually during playback"). Pre-play /
+    // paused scrolls are no-ops here.
+    if (!serverPlaying) return;
+    if (!trackingEnabled) return;       // already in autonomous mode
+    if (detachedDuringSong) return;     // already detached
+    detachedDuringSong = true;
+    fastCatchUp = false;
+  }
+  $scroll.addEventListener('wheel', noteManualScroll, { passive: true });
+  $scroll.addEventListener('touchmove', (e) => {
+    // 2-finger touchmove is pinch-zoom, handled by the gesture block
+    // above — never a scroll.
+    if (e.touches && e.touches.length === 1) noteManualScroll();
+  }, { passive: true });
+  $scroll.addEventListener('pointerdown', (e) => {
+    // Catches scrollbar drag on desktop. Touch is handled above; we
+    // only react to genuine mouse/pen pointer-downs.
+    if (e.pointerType && e.pointerType !== 'touch') noteManualScroll();
+  }, { passive: true });
+  document.addEventListener('keydown', (e) => {
+    if (SCROLL_KEYS.has(e.key)) noteManualScroll();
+  });
+
+  /// Called after every server-state update (tick OR applyRow). Rising
+  /// edge of serverPlaying ⇒ master just hit play; snap this viewer to
+  /// the live position (unless they're already detached). Falling edge
+  /// of serverInPlay ⇒ master left play mode ("hit stop"); clear the
+  /// per-song detach so the viewer rejoins normal tracking next time.
+  function noteServerPlaybackTransition() {
+    const playingRose  = !prevServerPlaying && serverPlaying;
+    const inPlayFell   =  prevServerInPlay && !serverInPlay;
+    prevServerPlaying = serverPlaying;
+    prevServerInPlay  = serverInPlay;
+    if (playingRose && trackingEnabled && !detachedDuringSong) {
+      needSnap = true;
+      fastCatchUp = false;
+    }
+    if (inPlayFell) {
+      detachedDuringSong = false;
+      fastCatchUp = false;
+    }
+    // Late-joiner: the first live tick after join carries the master's
+    // real elapsed, not the row's stale virtual_elapsed. Snap again so
+    // the viewer lands on the live position rather than slewing across
+    // potentially minutes of song.
+    if (awaitingFirstLiveTick && lastTickAt > 0) {
+      awaitingFirstLiveTick = false;
+      if (trackingEnabled && !detachedDuringSong) {
+        needSnap = true;
+      }
+    }
+  }
 
   // QR overlay — viewer-side "show this to a friend" affordance.
   // QRious is small (~20KB) and ships a self-contained canvas QR
@@ -292,6 +430,7 @@
       `last: ${kind}${info ? ' ' + info : ''}\n` +
       `sub: ${(r.song_subtitle ?? '∅').slice(0,30)} | title: ${(r.song_title ?? '∅').slice(0,30)}\n` +
       `mode: ${$body.dataset.mode || '?'} | lines: ${lineAnchors.length}\n` +
+      `track:${trackingEnabled ? 'on' : 'off'} det:${detachedDuringSong ? 'Y' : 'n'} fc:${fastCatchUp ? 'Y' : 'n'} sP:${serverPlaying ? 'Y' : 'n'} sI:${serverInPlay ? 'Y' : 'n'}\n` +
       `iOS:\n${iosLastLines.slice(-6).join('\n')}`;
   }
 
@@ -359,10 +498,21 @@
   /// line 1, not from wherever the previous song's scroll happened to be
   /// or from wherever the host is mid-performance.
   let hasReceivedFirstRow = false;
+  /// True between initial applyRow and the first live broadcast tick.
+  /// The row's `virtual_elapsed` is only refreshed on song-change writes,
+  /// so a late joiner's first snap uses stale data — they'd land near
+  /// 0:00 on a song the master started five minutes ago. Setting this
+  /// flag forces a second snap on the first real tick, which carries
+  /// the master's live elapsed.
+  let awaitingFirstLiveTick = false;
   /// Raw-text line index of the host song's "based on …" line, if any.
   /// Surfaced as a subtitle above the body and skipped from renderSong's
   /// output (the iOS player handles it the same way).
   let basedOnLineIndex = -1;
+
+  // Follow-master state declarations live higher up — see the block
+  // right after `let showChords = ...` so the toggle handler can read
+  // them at module-evaluation time without hitting a TDZ.
 
   // -------------------------------------------------------------------
   // Supabase client + subscriptions
@@ -459,6 +609,15 @@
       serverPlaying = !!data.is_playing;
       serverInPlay  = !!data.is_in_play_mode;
       lastTickAt = performance.now();
+      // Song / view change resets the per-song "user scrolled" state
+      // per spec — a new song starts everyone fresh in tracking mode
+      // until they scroll on this song. The catch-up latch is per-
+      // song too. The transition helper below sees the new state vs
+      // the prior song's prev* and only fires a rising-edge snap if
+      // the master genuinely went paused→playing across the change.
+      detachedDuringSong = false;
+      fastCatchUp = false;
+      noteServerPlaybackTransition();
     }
 
     // Re-render on a new song/view, or when only the transpose changed
@@ -486,8 +645,11 @@
       if (contentChanged) {
         if (!hasReceivedFirstRow) {
           // Initial join: snap to host's mid-song position so a late
-          // joiner doesn't see the page race down from the top.
+          // joiner doesn't see the page race down from the top. The
+          // row's elapsed may be stale (it only refreshes on song-
+          // change writes), so re-snap on the first live tick too.
           needSnap = true;
+          awaitingFirstLiveTick = true;
         } else {
           // Subsequent song change: start at the top regardless of
           // where the host's elapsed maps to. When the master picks a
@@ -495,6 +657,7 @@
           $scroll.scrollTop = 0;
           displayedLineFloat = 0;
           needSnap = false;
+          awaitingFirstLiveTick = false;  // not a late-joiner anymore
         }
         hasReceivedFirstRow = true;
       }
@@ -525,7 +688,19 @@
       serverPlaying = !!playing;
       serverInPlay = !!inPlay;
       lastTickAt = performance.now();
+      noteServerPlaybackTransition();
     };
+    window.__getFollowState = () => ({
+      trackingEnabled,
+      detachedDuringSong,
+      fastCatchUp,
+      prevServerPlaying,
+      prevServerInPlay,
+      serverPlaying,
+      serverInPlay,
+      displayedLineFloat,
+    });
+    window.__simulateManualScroll = () => noteManualScroll();
   }
 
   // Subscribe to row-level changes (song switches, start/stop).
@@ -559,6 +734,7 @@
       hideBanner();
       setStatus('live', 'Live');
       bumpDebug('tick', 'play=' + serverPlaying);
+      noteServerPlaybackTransition();
     })
     .on('broadcast', { event: 'row' }, (msg) => {
       bumpDebug('row_bcast', 'sub=' + (msg.payload?.song_subtitle ?? '∅'));
@@ -1108,29 +1284,70 @@
     if ($body.dataset.mode === 'list') return;
     if (lineAnchors.length === 0) return;
 
+    const baseLinesPerSec = lineAnchors.length / Math.max(30, row.length_seconds || 180);
+
+    // DETACHED: tracking toggled off, OR this viewer scrolled
+    // manually during the current song's playback. Advance at the
+    // autonomous time-based rate while the master is playing; hold
+    // position when paused so we don't drift forward over a long
+    // pause. Per-song detachment is reset on song change and on
+    // master "stop" (handled in the transition helper).
+    const inDetachedMode = !trackingEnabled || detachedDuringSong;
+    if (inDetachedMode) {
+      if (serverPlaying) {
+        displayedLineFloat = Math.min(
+          lineAnchors.length - 1,
+          displayedLineFloat + baseLinesPerSec * dt
+        );
+      }
+      $scroll.scrollTop = lineFloatToScrollTop(displayedLineFloat);
+      if ((now - lastTickAt) < 4000) lastSeenTickAt = now;
+      return;
+    }
+
+    // NORMAL tracking: chase the master's target position.
     const target = targetLineFloat(now);
     if (target === null) {
-      // Nothing to follow — hold whatever position we're at.
+      // Master paused with no scroll signal — hold position.
       return;
     }
 
     if (needSnap) {
       displayedLineFloat = target;
       needSnap = false;
+      fastCatchUp = false;
     } else {
       const delta = target - displayedLineFloat;
-      // No line-space jump. Per user feedback, when the master scrolls
-      // extra (manually) the slave should always animate to the new
-      // position — never teleport. For big deltas we boost the slew rate
-      // so it arrives quickly without feeling like a jump cut. The boost
-      // threshold is measured in pixels (>1 screen height) so it scales
-      // with viewport size.
-      const baseLinesPerSec = lineAnchors.length / Math.max(30, row.length_seconds || 180);
-      const baseMaxStep = baseLinesPerSec * 4 * dt;
       const pixelDelta = Math.abs(
         lineFloatToScrollTop(target) - lineFloatToScrollTop(displayedLineFloat)
       );
-      const boost = pixelDelta > $scroll.clientHeight ? 1.5 : 1.0;
+      const screenH = Math.max(1, $scroll.clientHeight);
+      const screensAhead = pixelDelta / screenH;
+
+      // Sticky catch-up: when the master is >1.5 screens ahead, the
+      // slew clamps to 3.75× base (= 2.5× the existing "faster"
+      // tier) and stays there until we've actually reached the
+      // target. Without the latch, the rate would oscillate back to
+      // the slower tier as the gap closes through the 1.5-screen
+      // threshold and the chase would feel uneven.
+      if (screensAhead > 1.5) {
+        fastCatchUp = true;
+      } else if (Math.abs(delta) < CATCH_UP_RELEASE_LINES) {
+        fastCatchUp = false;
+      }
+
+      const baseMaxStep = baseLinesPerSec * 4 * dt;
+      let boost;
+      if (fastCatchUp) {
+        boost = FAST_CATCH_UP_MULTIPLIER;
+      } else if (screensAhead > 1.0) {
+        // Existing "faster" tier — same threshold and multiplier as
+        // before, kept so behavior on modest deltas (1-1.5 screens)
+        // is unchanged.
+        boost = 1.5;
+      } else {
+        boost = 1.0;
+      }
       const maxStep = baseMaxStep * boost;
       const step = delta >= 0 ? Math.min(delta, maxStep) : Math.max(delta, -maxStep);
       displayedLineFloat += step;
