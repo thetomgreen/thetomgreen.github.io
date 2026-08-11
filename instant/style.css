@@ -75,7 +75,7 @@ body {
 
 /* Controls — both the in-title-wrap toggle and the right-side group */
 .controls, .title-wrap { /* shared button styles */ }
-button#toggle-chords, button#toggle-follow, .controls button {
+button#toggle-chords, button#toggle-follow, button#toggle-play, .controls button {
   font: inherit;
   font-size: 0.75rem;
   background: #1f1f1f;
@@ -91,7 +91,7 @@ button#toggle-chords, button#toggle-follow, .controls button {
   white-space: nowrap;
 }
 @media (max-width: 380px) {
-  button#toggle-chords, button#toggle-follow, .controls button {
+  button#toggle-chords, button#toggle-follow, button#toggle-play, .controls button {
     padding: 3px 5px;
     font-size: 0.7rem;
   }
@@ -103,6 +103,15 @@ button#toggle-follow:hover, button#toggle-follow:focus-visible,
 }
 button#toggle-chords[aria-pressed="true"],
 button#toggle-follow[aria-pressed="true"] { background: #2c5fff; border-color: #2c5fff; }
+/* The Follow button is removed entirely (not just dimmed) when the
+ * performer turns off "Followers track my position" — tapping it could
+ * not do anything, so offering it is a lie. The play/pause transport
+ * takes its place. */
+button#toggle-follow.hidden, button#toggle-play.hidden { display: none; }
+/* Fixed width: the label swaps between "Pause" (44px) and "Play" (34px),
+ * and letting it resize shoved Chords/QR/A-/A+ sideways ~10px on every
+ * tap. */
+button#toggle-play { min-width: 3.4rem; }
 .controls { display: flex; gap: 4px; flex-shrink: 0; }
 
 /* Scroll area */
@@ -210,6 +219,15 @@ button#toggle-follow[aria-pressed="true"] { background: #2c5fff; border-color: #
   overflow-wrap: anywhere;
   word-break: break-word;
   line-height: 1.25;
+}
+/* A run of chords with no lyric under them (chord line longer than its
+ * lyric) is emitted as one segment whose internal spacing reproduces the
+ * source columns. `pre-wrap` keeps those spaces (unlike the nowrap used
+ * for a single chord) while still allowing the run to wrap at a space if
+ * it's wider than a narrow screen. */
+.syl-chord-run {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 /* Empty placeholder chord (added so chordless syllables share baseline
  * with their chord-bearing siblings) — takes vertical space but no ink. */

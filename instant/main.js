@@ -21,17 +21,35 @@
   const SUPABASE_URL = "https://srneydgbhpovhhkkvkvi.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNybmV5ZGdiaHBvdmhoa2t2a3ZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MjQ2NTEsImV4cCI6MjA5NDQwMDY1MX0.rKVlG2Thgcl28jv0V9VQB6Y0visIMVoBeJ_V1RkjHCM";
 
-  // Scroll slew rate: max viewport-fraction-per-second the displayed
-  // position is allowed to advance toward the server target. Matches
-  // the iOS slave's slew constant.
-  const SLEW_VIEWPORT_FRACTION_PER_SEC = 0.20;
-  // If the server-vs-local elapsed delta is larger than this, snap
-  // (it's almost certainly a seek, not slow drift).
-  const SNAP_THRESHOLD_SEC = 4.0;
+  // When a tick's elapsed differs from what the PREVIOUS tick plus wall
+  // time predicted by more than this, the performer repositioned (dragged
+  // the chart, or the tracker jumped) rather than simply played on. Those
+  // are followed by snapping, not by slewing.
+  //
+  // Without this the page took several seconds to catch up with a
+  // performer's hand-scroll: a drag moves virtualElapsed discontinuously,
+  // but the page could not tell that from ordinary playback drift, so it
+  // crawled toward the new position at the forward cap. Most visible right
+  // after the song starts, when the page is still holding at the top and a
+  // scroll should obviously be followed at once.
+  //
+  // 1.0 s is comfortably above tick jitter at ~3 Hz (prediction error is
+  // well under half a second) while still catching any scroll worth more
+  // than a line or two. Smaller repositions are left to the normal slew,
+  // which handles them smoothly.
+  const SEEK_THRESHOLD_SEC = 1.0;
+  /// Equivalent for the out-of-play-mode `scroll_fraction` path. Small,
+  /// because the fraction only ever moves when a human drags — this exists
+  /// to ignore rounding, not to distinguish a drag from anything else.
+  /// 0.01 of a song is well under a line on any realistic chart.
+  const SEEK_FRACTION_THRESHOLD = 0.01;
 
-  // Lead-in (matches the iOS player). The first 2 seconds of `elapsed`
-  // are spent at the resting position; scroll begins thereafter.
-  const LEAD_IN_SEC = 2.0;
+  // NOTE: there is no lead-in CONSTANT any more. The lead-in is geometry,
+  // not a fixed number of seconds — see `leadInSeconds()`, which derives it
+  // from this viewer's viewport height, font size and the song length the
+  // same way the iOS player does. The old flat 2 s meant the page started
+  // crawling from the first bar while the performer's screen was still
+  // stationary.
 
   // -------------------------------------------------------------------
   // Resolve share code from URL
@@ -219,6 +237,20 @@
   /// performer has started, a detached viewer's page holds still rather
   /// than crawling away from line 1. Reset on every song change.
   let songHasStarted = false;
+  /// Safe scroll mode's own song clock, in seconds. Seeded from the
+  /// performer's live elapsed at the moment the viewer detaches, so the
+  /// page carries on at the phase of the song it was already at — including
+  /// sitting still if the lead-in hasn't finished yet.
+  let safeElapsed = 0;
+  /// The viewer's explicit play/pause choice, or null if they haven't
+  /// touched it. Null means "follow the song": the clock runs once the song
+  /// has started. Once they press the button their choice holds for the
+  /// rest of the song (cleared on song change), so the performer pausing
+  /// between verses can't override a viewer who chose to keep reading.
+  let safePlayOverride = null;
+  function safeClockRunning() {
+    return safePlayOverride !== null ? safePlayOverride : songHasStarted;
+  }
   /// Safe scroll mode's own float position, in pixels. The DOM's scrollTop
   /// is integer-ish in most browsers, and the song-rate creep is a fraction
   /// of a pixel per frame (~0.3 px at 60 Hz for a 3-minute song), so
@@ -235,12 +267,33 @@
   /// and falling-edge "master hit stop" detach-reset.
   let prevServerPlaying = false;
   let prevServerInPlay = false;
+  /// Seek detection: the last elapsed we saw, when we saw it, and whether
+  /// the performer was playing then — enough to predict what the next tick
+  /// SHOULD carry. A tick that misses that prediction is a reposition.
+  /// Reset to null on song change so a new song's elapsed is never compared
+  /// against the previous song's.
+  let prevSeekElapsed = null;
+  let prevSeekAt = 0;
+  let prevSeekPlaying = false;
+  /// Same idea for the OUT-OF-PLAY-MODE path, where the performer's
+  /// position arrives as `scroll_fraction` rather than `elapsed`. This one
+  /// needs no prediction: outside play mode nothing advances on its own, so
+  /// the fraction changes ONLY when a human drags the chart. Any forward
+  /// change is therefore an unambiguous hand-scroll.
+  let prevSeekFraction = null;
   /// Sticky fast-catch-up flag. Set when target is >1.5 viewport heights
   /// ahead; stays set until displayed has actually reached target. This
   /// is what makes the catch-up "continue at this speed until the
   /// target is reached" rather than oscillating between tiers as the
   /// gap closes.
   let fastCatchUp = false;
+  /// Sticky "we are chasing a hand-scroll" latch. Set when the performer
+  /// repositions (a discontinuity in elapsed, or a changed scroll
+  /// fraction outside play mode); released once we arrive. While set,
+  /// FORWARD motion uses the reposition controller instead of the gentle
+  /// reading tiers, so a drag is followed at the same speed in either
+  /// direction rather than snapping one way and easing the other.
+  let repositioning = false;
   /// Threshold (in line-floats) for "target reached" when releasing the
   /// sticky catch-up state. Half a line is tight enough to feel like an
   /// arrival without flickering at the boundary on the next frame.
@@ -249,15 +302,23 @@
   /// 2.5× the existing "faster" tier of 1.5× per spec.
   const FAST_CATCH_UP_MULTIPLIER = 1.5 * 2.5;
 
-  // --- Backward tracking -------------------------------------------------
-  // When the master jumps BACKWARD (repeat a verse, restart a section) the
-  // page is allowed to travel back faster than it ever travels forward:
-  // the ceiling is 2.5× the fastest forward speed, i.e. 2.5× the catch-up
-  // tier. Forward motion is what the audience reads along with, so it stays
-  // gentle; backward motion is a reposition, and dawdling through it means
-  // the audience is reading the wrong part of the song the whole time.
-  const BACKWARD_MAX_MULTIPLIER = FAST_CATCH_UP_MULTIPLIER * 2.5;
-  /// Backward approach is PROPORTIONAL, not constant-rate: speed is the
+  // --- Repositioning -----------------------------------------------------
+  // A REPOSITION is any move that isn't the song playing on: the performer
+  // dropping back to repeat a verse, or hand-scrolling the chart. It gets
+  // its own speed limit, well above the forward reading pace, because
+  // dawdling through one means the audience reads the wrong part of the
+  // song for the whole journey.
+  //
+  // The ceiling is 2.5x the fastest FORWARD speed (2.5x the catch-up tier)
+  // and applies IN BOTH DIRECTIONS. Ordinary forward playback keeps the
+  // gentle tiers — this ceiling is only reached when the page is chasing a
+  // reposition rather than reading along.
+  //
+  // An earlier version snapped instantly on a forward hand-scroll while
+  // backward stayed rate-limited, which made the same gesture behave
+  // completely differently depending on which way the performer dragged.
+  const REPOSITION_MAX_MULTIPLIER = FAST_CATCH_UP_MULTIPLIER * 2.5;
+  /// The approach is PROPORTIONAL, not constant-rate: speed is the
   /// remaining gap divided by this time constant, clamped to the ceiling
   /// above. So a small correction crawls while a big jump starts at the
   /// ceiling and eases in.
@@ -266,18 +327,18 @@
   /// control has a long exponential tail, so a larger constant is much
   /// slower than the ceiling suggests — at 1.5 s a half-song jump needed
   /// 9.8 s to settle, which is not "rapid" by any reading. At 0.6 s:
-  ///   back 30 lines → full ceiling, visually landed 3.4 s, settled 4.8 s
-  ///   back  3 lines → peaks 5.0 lines/s, settled 2.4 s
-  ///   back  1 line  → peaks 1.7 lines/s (5x natural), settled 1.8 s
+  ///   move 30 lines → full ceiling, visually landed 3.4 s, settled 4.8 s
+  ///   move  3 lines → peaks 5.0 lines/s, settled 2.4 s
+  ///   move  1 line  → peaks 1.7 lines/s (5x natural), settled 1.8 s
   /// i.e. a half-song jump moves ~7.5x faster than a one-line nudge.
-  const BACKWARD_TIME_CONSTANT_SEC = 0.6;
+  const REPOSITION_TIME_CONSTANT_SEC = 0.6;
   /// Exponential approach never mathematically arrives — close the last
   /// sliver in one step rather than asymptoting forever. Keep this SMALL:
   /// the closing step lands in a single frame, so it travels at
-  /// `BACKWARD_ARRIVE_LINES / dt` lines/sec — at 0.25 that's ~15 lines/s
+  /// `REPOSITION_ARRIVE_LINES / dt` lines/sec — at 0.25 that's ~15 lines/s
   /// on a 60 Hz display, which would breach the ceiling above. At 0.05
   /// (≈1 px, invisible) the peak stays exactly on the ceiling.
-  const BACKWARD_ARRIVE_LINES = 0.05;
+  const REPOSITION_ARRIVE_LINES = 0.05;
 
   // --- Safe scroll mode --------------------------------------------------
   /// How far the DOM's scrollTop may drift from the value we last wrote
@@ -365,10 +426,30 @@
     return trackingEnabled && masterFollowEnabled && !detachedDuringSong;
   }
 
+  /// Return this viewer to following the performer.
+  ///
+  /// Several paths lead back here — tapping Follow, the performer
+  /// re-enabling tracking — and every one of them has to clear the SAME
+  /// set of state. Clearing it in each caller is how `safePlayOverride`
+  /// got stranded: a viewer who paused, re-followed, then later scrolled
+  /// to read back a verse found the page frozen, because their old pause
+  /// was still in force with no visible cause and no obvious way out.
+  function reattachToMaster() {
+    detachedDuringSong = false;
+    fastCatchUp = false;
+    repositioning = false;
+    safePlayOverride = null;
+    needSnap = true;
+  }
+
+  const $togglePlay = document.getElementById('toggle-play');
+
   // Cache the rendered state: applyFollowToggle is called every frame, and
   // touching DOM attributes 60x/sec for no reason is wasteful.
   let renderedFollowOn = null;
   let renderedMasterOn = null;
+  let renderedPlayVisible = null;
+  let renderedPlayOn = null;
   function applyFollowToggle() {
     if (!$toggleFollow) return;
     const on = effectivelyFollowing();
@@ -377,17 +458,50 @@
       renderedFollowOn = on;
     }
     applyMasterStatus();
+    applyPlayToggle();
   }
   function applyMasterStatus() {
     if (!$toggleFollow) return;
     if (masterFollowEnabled === renderedMasterOn) return;
     renderedMasterOn = masterFollowEnabled;
-    // Dim the toggle when the performer has paused tracking for everyone —
-    // tapping it can't help, and the viewer deserves to know why.
-    $toggleFollow.style.opacity = masterFollowEnabled ? '' : '0.5';
-    $toggleFollow.title = masterFollowEnabled
-      ? 'Follow the performer\'s position — tap to read at your own pace'
-      : 'Performer paused live position-tracking';
+    // When the performer turns off "Followers track my position", REMOVE the
+    // Follow button rather than dimming it. Tapping it cannot have any
+    // effect in that state, so presenting it at all is misleading — the
+    // viewer is simply in free-scroll now, and the play/pause transport
+    // below is the control that actually does something for them.
+    $toggleFollow.classList.toggle('hidden', !masterFollowEnabled);
+    $toggleFollow.title = 'Follow the performer\'s position — tap to read at your own pace';
+  }
+  /// Play/pause is shown exactly when the viewer is NOT following: they
+  /// tapped Follow off, they scrolled away, or the performer turned tracking
+  /// off for everyone. While following, the performer's transport is in
+  /// charge and a local one would be a lie.
+  function applyPlayToggle() {
+    if (!$togglePlay) return;
+    // Never on a list view. The scroll loop returns early there, so the
+    // button would be visible and completely inert — a control that can
+    // never do anything is worse than no control.
+    const isList = $body.dataset.mode === 'list';
+    const visible = !isList && !effectivelyFollowing();
+    if (visible !== renderedPlayVisible) {
+      $togglePlay.classList.toggle('hidden', !visible);
+      renderedPlayVisible = visible;
+    }
+    const playing = safeClockRunning();
+    if (playing !== renderedPlayOn) {
+      // aria-pressed tracks "is scrolling"; the label is the ACTION, so it
+      // reads "Pause" while moving and "Play" while stopped.
+      $togglePlay.setAttribute('aria-pressed', playing ? 'true' : 'false');
+      $togglePlay.textContent = playing ? 'Pause' : 'Play';
+      $togglePlay.title = playing ? 'Pause the scroll' : 'Resume scrolling at the song\'s pace';
+      renderedPlayOn = playing;
+    }
+  }
+  if ($togglePlay) {
+    $togglePlay.addEventListener('click', () => {
+      safePlayOverride = !safeClockRunning();
+      applyPlayToggle();
+    });
   }
   applyFollowToggle();
   if ($toggleFollow) {
@@ -402,19 +516,18 @@
       trackingEnabled = !effectivelyFollowing();
       applyFollowToggle();
       if (trackingEnabled) {
-        // Re-engaging: clear any runtime detach + the catch-up latch,
-        // then snap on the next frame so the viewer lands on the
-        // master's current position instead of slewing across the song.
-        detachedDuringSong = false;
-        fastCatchUp = false;
-        needSnap = true;
+        // Re-engaging: snap on the next frame so the viewer lands on the
+        // performer's current position instead of slewing across the song.
+        reattachToMaster();
       } else {
         // Disengaging: this is request #3 — the Follow button drops the
         // viewer into exactly the same safe scroll mode a manual scroll
         // produces. Adopt the current position as the creep origin so the
-        // page carries on from where they're looking.
+        // page carries on from where they're looking, at the phase of the
+        // song it was already at.
         safeScrollTop = $scroll.scrollTop;
         lastAppliedScrollTop = $scroll.scrollTop;
+        safeElapsed = liveElapsed(performance.now());
       }
     });
   }
@@ -434,7 +547,25 @@
     // mid-performance, or while they're paused. Scrolling is an explicit
     // "let me read at my own pace", and it shouldn't matter what the
     // performer's transport happens to be doing at that instant.
-    if (detachedDuringSong) return;     // already detached
+    //
+    // Except on a list view: there is nothing to follow and nothing to
+    // scroll at song pace, so detaching there would only strip the Follow
+    // button and put a dead transport on screen over a static list.
+    if ($body.dataset.mode === 'list') return;
+    // Seed the safe-mode clock ONLY when arriving from a following state.
+    // A viewer already in safe mode (they tapped Follow off) has their own
+    // clock running, and re-seeding it from the performer would throw that
+    // away — if the performer were still inside their lead-in, one nudge
+    // of the page would stop it dead.
+    if (effectivelyFollowing()) {
+      safeElapsed = liveElapsed(performance.now());
+    }
+    if (detachedDuringSong) {
+      // Already detached — still adopt the new position as the creep
+      // origin, or the next frame drags the page back.
+      safeScrollTop = $scroll.scrollTop;
+      return;
+    }
     detachedDuringSong = true;
     fastCatchUp = false;
     // Adopt wherever the viewer just put the page as safe mode's origin,
@@ -478,7 +609,50 @@
     // what the master's transport does — a detached viewer keeps reading
     // at song pace through the performer's pauses and stops.
     if (serverPlaying) songHasStarted = true;
-    if (playingRose && trackingEnabled && !detachedDuringSong) {
+
+    // Did the performer REPOSITION rather than just play on? Compare this
+    // tick's elapsed against what the previous tick plus wall time
+    // predicted. A hand-scroll moves virtualElapsed discontinuously; left
+    // to the ordinary forward tiers the page would crawl after it for
+    // several seconds, which is what made a scroll right after the song
+    // started feel broken.
+    //
+    // BOTH directions arm the latch, and the reposition controller then
+    // moves at the same ceiling either way. An earlier version snapped
+    // forward and rate-limited backward, so the identical gesture behaved
+    // completely differently depending on which way the performer dragged.
+    const nowMs = performance.now();
+    if (prevSeekElapsed !== null) {
+      const gap = (nowMs - prevSeekAt) / 1000;
+      const predicted = prevSeekPlaying ? prevSeekElapsed + gap : prevSeekElapsed;
+      if (Math.abs(serverElapsed - predicted) > SEEK_THRESHOLD_SEC && effectivelyFollowing()) {
+        repositioning = true;
+        fastCatchUp = false;
+      }
+    }
+    prevSeekElapsed = serverElapsed;
+    prevSeekAt = nowMs;
+    prevSeekPlaying = serverPlaying;
+
+    // The out-of-play-mode hand-scroll. This is the case requirement #1 is
+    // literally about — the performer flicking through the chart before
+    // they have started the song — and it is the one the elapsed-based
+    // detector above cannot see, because out of play mode `elapsed` does
+    // not move at all: the position arrives as `scroll_fraction`.
+    //
+    // No prediction is needed here. Nothing advances by itself outside play
+    // mode, so a changed fraction is always a human dragging — in either
+    // direction, both rate-limited to the same reposition ceiling.
+    if (!serverInPlay && serverScrollFraction !== null) {
+      if (prevSeekFraction !== null &&
+          Math.abs(serverScrollFraction - prevSeekFraction) > SEEK_FRACTION_THRESHOLD &&
+          effectivelyFollowing()) {
+        repositioning = true;
+        fastCatchUp = false;
+      }
+      prevSeekFraction = serverScrollFraction;
+    }
+    if (playingRose && effectivelyFollowing()) {
       needSnap = true;
       fastCatchUp = false;
     }
@@ -569,8 +743,9 @@
       `last: ${kind}${info ? ' ' + info : ''}\n` +
       `sub: ${(r.song_subtitle ?? '∅').slice(0,30)} | title: ${(r.song_title ?? '∅').slice(0,30)}\n` +
       `mode: ${$body.dataset.mode || '?'} | lines: ${lineAnchors.length}\n` +
-      `track:${trackingEnabled ? 'on' : 'off'} masterFollow:${masterFollowEnabled ? 'on' : 'off'} det:${detachedDuringSong ? 'Y' : 'n'} fc:${fastCatchUp ? 'Y' : 'n'} sP:${serverPlaying ? 'Y' : 'n'} sI:${serverInPlay ? 'Y' : 'n'}\n` +
+      `track:${trackingEnabled ? 'on' : 'off'} masterFollow:${masterFollowEnabled ? 'on' : 'off'} det:${detachedDuringSong ? 'Y' : 'n'} fc:${fastCatchUp ? 'Y' : 'n'} rep:${repositioning ? 'Y' : 'n'} sP:${serverPlaying ? 'Y' : 'n'} sI:${serverInPlay ? 'Y' : 'n'}\n` +
       `started:${songHasStarted ? 'Y' : 'n'} safeTop:${safeScrollTop.toFixed(1)} lf:${displayedLineFloat.toFixed(2)} sf:${serverScrollFraction === null ? '∅' : serverScrollFraction.toFixed(3)}\n` +
+      `leadIn:${leadInSeconds().toFixed(1)}s elap:${serverElapsed.toFixed(1)} safeElap:${safeElapsed.toFixed(1)} run:${safeClockRunning() ? 'Y' : 'n'} ovr:${safePlayOverride === null ? '-' : (safePlayOverride ? 'play' : 'pause')}\n` +
       `iOS:\n${iosLastLines.slice(-6).join('\n')}`;
   }
 
@@ -762,6 +937,12 @@
       // transition helper runs so the incoming row's is_playing can
       // immediately re-latch it.
       songHasStarted = false;
+      repositioning = false;
+      // New song, new clock: drop the viewer's play/pause choice and the
+      // seek baseline, both of which only made sense for the old song.
+      safePlayOverride = null;
+      safeElapsed = serverElapsed;
+      prevSeekElapsed = null;
       noteServerPlaybackTransition();
     }
 
@@ -847,6 +1028,7 @@
       masterFollowEnabled,
       detachedDuringSong,
       fastCatchUp,
+      repositioning,
       prevServerPlaying,
       prevServerInPlay,
       serverPlaying,
@@ -854,8 +1036,17 @@
       displayedLineFloat,
       songHasStarted,
       safeScrollTop,
-      inSafeScrollMode: !masterFollowEnabled || !trackingEnabled || detachedDuringSong,
+      inSafeScrollMode: !effectivelyFollowing(),
+      safeElapsed,
+      safePlayOverride,
+      safeClockRunning: safeClockRunning(),
+      leadInSeconds: leadInSeconds(),
+      geometry: scrollGeometry(),
+      followVisible: $toggleFollow ? !$toggleFollow.classList.contains('hidden') : false,
+      playVisible: $togglePlay ? !$togglePlay.classList.contains('hidden') : false,
     });
+    window.__tapPlay = () => $togglePlay?.click();
+    window.__setSafeElapsed = (e) => { safeElapsed = e; };
     window.__simulateManualScroll = () => noteManualScroll();
     /// Drive a real user-style scroll: move the DOM directly, exactly as a
     /// finger or wheel would, so the loop's position-delta detector is what
@@ -867,8 +1058,7 @@
       const prev = masterFollowEnabled;
       masterFollowEnabled = !!enabled;
       if (!prev && masterFollowEnabled && trackingEnabled && !detachedDuringSong) {
-        needSnap = true;
-        fastCatchUp = false;
+        reattachToMaster();
       }
       applyMasterStatus();
     };
@@ -909,8 +1099,7 @@
         const prevMaster = masterFollowEnabled;
         masterFollowEnabled = p.follow_master_position;
         if (!prevMaster && masterFollowEnabled && trackingEnabled && !detachedDuringSong) {
-          needSnap = true;
-          fastCatchUp = false;
+          reattachToMaster();
         }
         applyMasterStatus();
       }
@@ -1236,11 +1425,13 @@
     // same height and their lyric baselines align horizontally. Without
     // this, chordless syllables float 1em higher than their chord-bearing
     // siblings on the same visual line.
-    const makeSyl = (chordText, lyricText) => {
+    const makeSyl = (chordText, lyricText, isRun) => {
       const syl = document.createElement('span');
       syl.className = 'syl';
       const ch = document.createElement('span');
-      ch.className = chordText ? 'syl-chord' : 'syl-chord syl-chord-empty';
+      ch.className = chordText
+        ? (isRun ? 'syl-chord syl-chord-run' : 'syl-chord')
+        : 'syl-chord syl-chord-empty';
       ch.textContent = chordText || ' ';
       syl.appendChild(ch);
       const ly = document.createElement('span');
@@ -1287,6 +1478,28 @@
       const next = tokens[k + 1];
       const endCol = next ? next.col : Math.max(lyricRaw.length, tok.col + tok.text.length);
       const sub = lyricRaw.substring(tok.col, endCol);
+      if (sub.length === 0) {
+        // This chord starts past the end of the lyric, so there's no text to
+        // hang it (or any chord after it) on — tokens are column-sorted, so
+        // once one runs off the end they all do. Emitting them as separate
+        // empty syllables butts them together ("DAmCx4"). Instead emit the
+        // whole tail as ONE monospace segment that reproduces the source
+        // column gaps (same padding rule as transposeChordLineString), so
+        // "G     D   Am  C  x4" keeps the chart's shape. The gaps are drawn
+        // in the chord font, so they're column-exact within the run; and
+        // because the run lives in a .syl-chord it vanishes cleanly in
+        // chords-off mode instead of leaving a hole in the lyric.
+        const runStart = tok.col;
+        let runText = '';
+        for (let j = k; j < tokens.length; j++) {
+          const rel = tokens[j].col - runStart;
+          if (runText.length < rel) runText += ' '.repeat(rel - runText.length);
+          runText += transposeChord(tokens[j].text, currentTranspose);
+        }
+        if (pair.lastChild) pair.appendChild(document.createTextNode(' '));
+        pair.appendChild(makeSyl(runText, '', true));
+        break;
+      }
       appendChunk(transposeChord(tok.text, currentTranspose), sub);
     }
     return pair;
@@ -1455,35 +1668,136 @@
     return lo + (centerY - lineAnchors[lo].centerY) / span;
   }
 
-  /// Pixels-per-second the page creeps at in safe scroll mode: the whole
-  /// scrollable extent spread over the song's length, i.e. "the rate
-  /// determined by the song". Derived from live layout so it stays correct
-  /// across zoom changes and the chords toggle.
-  function safeScrollPixelsPerSecond() {
-    const range = Math.max(0, $scroll.scrollHeight - $scroll.clientHeight);
-    const secs = Math.max(30, (row && row.length_seconds) || 180);
-    return range / secs;
+  // -------------------------------------------------------------------
+  // Scroll geometry — a JS port of the iOS player's curve
+  // (SongPlayerView.restingOffset / middleOffset / leadInSeconds /
+  // scrollPosition). The audience page now paces itself exactly the way
+  // the performer's own screen does.
+  //
+  // The important property is the LEAD-IN: the page does not start moving
+  // the instant the song starts. It holds at the top until the singer has
+  // sung enough that the current lyric has reached the middle of the
+  // visible area, and only then begins to scroll. Previously the page used
+  // a flat 2-second lead-in and a linear line-index ramp, so it crawled
+  // from the first bar while the performer's screen was still stationary.
+  //
+  // Everything is measured from THIS viewer's layout — their viewport
+  // height, their font size, their zoom level — not the performer's. Two
+  // viewers at different zoom levels genuinely need different lead-ins for
+  // the text to reach the middle of their screens at the same moment in
+  // the song, which is what "font-size aware and window-size aware" means.
+  // -------------------------------------------------------------------
+
+  function songSeconds() {
+    return Math.max(0.0001, (row && row.length_seconds) || 180);
+  }
+  /// Per-song scroll acceleration, mirrored from the host row. 0 = linear.
+  function tempoAcceleration() {
+    const a = row && row.tempo_acceleration;
+    return typeof a === 'number' && isFinite(a) ? a : 0;
+  }
+
+  /// Live layout measurements, in pixels. Recomputed per use rather than
+  /// cached: zoom, the chords toggle and device rotation all change it, and
+  /// the numbers are cheap reads of already-computed layout.
+  function scrollGeometry() {
+    const S = Math.max(1, $scroll.clientHeight);
+    const maxTop = Math.max(0, $scroll.scrollHeight - S);
+    // Bottom of the actual song text. NOT scrollHeight — the page carries a
+    // #bottom-spacer whose height is deliberate padding, and folding that
+    // into the song's extent would make the page pace as though the song
+    // were longer than the lyrics.
+    const contentBottom = $body.offsetTop + $body.offsetHeight;
+    const lineH = lineAnchors.length > 0
+      ? Math.max(1, $body.offsetHeight / lineAnchors.length)
+      : 20;
+    // Hard stop: last line sits at the bottom with a 2-line buffer.
+    const resting = Math.min(maxTop, Math.max(0, contentBottom - S + 2 * lineH));
+    // Pacing target: the offset that WOULD put the last line at the vertical
+    // middle. Never actually reached (position is clamped to `resting`); it
+    // exists so the song's last line arrives well after the eye has got to
+    // the bottom, then rests there for the closing seconds.
+    const middle = Math.max(resting, contentBottom - S / 2 - lineH / 2);
+    return { S, maxTop, resting, middle, lineH };
+  }
+
+  /// Seconds of song that must elapse before the page starts scrolling.
+  /// Pure geometry: screen height, total scroll distance, song length.
+  function leadInSeconds() {
+    const { S, middle } = scrollGeometry();
+    const L = songSeconds();
+    if (middle <= 0) return L;
+    return L * S / (2 * middle + S);
+  }
+
+  /// Absolute scroll offset for a given elapsed time, under the same
+  /// linear-tempo curve the iOS player uses. Reduces to a straight line
+  /// when tempo_acceleration is 0.
+  function scrollTopForElapsed(elapsed) {
+    const { resting, middle } = scrollGeometry();
+    const L = songSeconds();
+    if (elapsed >= L) return resting;
+    const lead = leadInSeconds();
+    if (elapsed < lead) return 0;          // hold at the top through the lead-in
+    const dur = Math.max(0.0001, L - lead);
+    const tau = elapsed - lead;
+    const a = tempoAcceleration();
+    const vAvg = middle / dur;
+    const v0 = 2 * vAvg / (2 + a);
+    const v1 = (1 + a) * v0;
+    return Math.min(resting, v0 * tau + (v1 - v0) * tau * tau / (2 * dur));
+  }
+
+  /// Instantaneous scroll SPEED (px/sec) of that curve. Safe scroll mode
+  /// integrates this rather than jumping to the absolute position, so the
+  /// viewer's own manual scrolling stays as an offset instead of being
+  /// overwritten — they read where they like, at the song's pace.
+  function scrollSpeedForElapsed(elapsed) {
+    const L = songSeconds();
+    if (elapsed >= L) return 0;
+    const lead = leadInSeconds();
+    if (elapsed < lead) return 0;
+    const { middle } = scrollGeometry();
+    const dur = Math.max(0.0001, L - lead);
+    const tau = elapsed - lead;
+    const a = tempoAcceleration();
+    const vAvg = middle / dur;
+    const v0 = 2 * vAvg / (2 + a);
+    const v1 = (1 + a) * v0;
+    return v0 + (v1 - v0) * tau / dur;
   }
 
   /// Compute the host's current line-float position from server state.
   /// Returns null when there's nothing meaningful to point at (host paused
   /// and hasn't reported a scroll position).
+  /// The performer's live elapsed, extrapolated between the ~3 Hz ticks.
+  function liveElapsed(now) {
+    const sinceTick = (now - lastTickAt) / 1000;
+    return serverPlaying ? serverElapsed + sinceTick : serverElapsed;
+  }
+
   function targetLineFloat(now) {
     const lineCount = lineAnchors.length;
     if (lineCount === 0) return null;
-    const songDur = Math.max(0.0001, (row && row.length_seconds) || 0);
-    if (serverInPlay && songDur > 0) {
-      // Time-based: extrapolate elapsed forward if playing, hold if paused.
-      const sinceTick = (now - lastTickAt) / 1000;
-      const live = serverPlaying ? serverElapsed + sinceTick : serverElapsed;
-      const tAfter = Math.max(0, live - LEAD_IN_SEC);
-      const dur = Math.max(0.0001, songDur - LEAD_IN_SEC);
-      const progress = Math.max(0, Math.min(1, tAfter / dur));
-      return progress * (lineCount - 1);
+    if (serverInPlay) {
+      // Drive the same lead-in + tempo curve the performer's screen uses,
+      // then express the result in line space so the existing slew and
+      // backward controllers keep working unchanged. `scrollTopToLineFloat`
+      // is the exact inverse of `lineFloatToScrollTop`, so this round-trips
+      // to the pixel offset the curve asked for.
+      return scrollTopToLineFloat(scrollTopForElapsed(liveElapsed(now)));
     }
     if (serverScrollFraction !== null) {
+      // Performer is hand-scrolling outside play mode. Their fraction is of
+      // their own scrollable range; map it onto ours.
+      //
+      // Against `resting`, NOT `maxTop`. iOS divides by its restingOffset
+      // (contentHeight - containerHeight + 2*lineHeight), whereas our
+      // scrollHeight also contains the 80vh #bottom-spacer. Using maxTop
+      // inflated every fraction — at f=0.75 the audience sat about 17 lines
+      // ahead of the performer.
       const f = Math.max(0, Math.min(1, serverScrollFraction));
-      return f * (lineCount - 1);
+      return scrollTopToLineFloat(f * scrollGeometry().resting);
     }
     return null;
   }
@@ -1505,7 +1819,11 @@
     if ($body.dataset.mode === 'list') return;
     if (lineAnchors.length === 0) return;
 
-    const baseLinesPerSec = lineAnchors.length / Math.max(30, row.length_seconds || 180);
+    // Same song-length source as the scroll curve. These used to disagree
+    // (a 30 s floor here vs songSeconds() there), so on any song under
+    // 30 s the slew cap was paced against a different song than the
+    // position it was chasing.
+    const baseLinesPerSec = lineAnchors.length / songSeconds();
 
     // Did a human move the page since our last write? Observing the effect
     // beats guessing at the gesture: this catches wheel, touch drag,
@@ -1531,7 +1849,7 @@
     // what made "free scrolling" impossible. Here we integrate a float in
     // pixel space and add to it, so a manual scroll simply moves the
     // origin and the creep carries on from there.
-    const inSafeScrollMode = !masterFollowEnabled || !trackingEnabled || detachedDuringSong;
+    const inSafeScrollMode = !effectivelyFollowing();
     if (inSafeScrollMode) {
       const maxTop = Math.max(0, $scroll.scrollHeight - $scroll.clientHeight);
       // Re-adopt the live position ONLY when someone else moved it (the
@@ -1542,9 +1860,20 @@
           Math.abs($scroll.scrollTop - lastAppliedScrollTop) > USER_SCROLL_TOLERANCE_PX) {
         safeScrollTop = clamp($scroll.scrollTop, 0, maxTop);
       }
-      if (songHasStarted) {
-        safeScrollTop = Math.min(maxTop, safeScrollTop + safeScrollPixelsPerSecond() * dt);
-        $scroll.scrollTop = safeScrollTop;
+      if (safeClockRunning()) {
+        safeElapsed += dt;
+        // Integrate the SPEED of the performer's curve rather than jumping
+        // to its absolute position. That keeps the viewer's own scrolling
+        // as an offset — they read wherever they like, and the page still
+        // advances at the song's pace under them. It also inherits the
+        // lead-in for free: speed is zero until the lead-in elapses, so a
+        // viewer who detaches before the song gets going sits still until
+        // the song's timing says to move, exactly as the performer does.
+        const v = scrollSpeedForElapsed(safeElapsed);
+        if (v > 0) {
+          safeScrollTop = Math.min(maxTop, safeScrollTop + v * dt);
+          $scroll.scrollTop = safeScrollTop;
+        }
       }
       lastAppliedScrollTop = $scroll.scrollTop;
       // Keep the tracked position aligned with where the viewer actually
@@ -1585,18 +1914,45 @@
       // the slower tier as the gap closes through the 1.5-screen
       // threshold and the chase would feel uneven.
       // Arm the catch-up latch on FORWARD gaps only. Backward motion is
-      // governed by its own proportional controller below, which is
-      // already faster than any forward tier — letting a backward gap
-      // arm the forward latch would just leave it stuck on afterwards.
+      // governed by the reposition controller below, which is already
+      // faster than any forward tier — letting a backward gap arm the
+      // forward latch would just leave it stuck on afterwards.
       if (delta > 0 && screensAhead > 1.5) {
         fastCatchUp = true;
       } else if (Math.abs(delta) < CATCH_UP_RELEASE_LINES) {
         fastCatchUp = false;
       }
+      // Release the hand-scroll latch once we've arrived, so the page
+      // drops back to ordinary reading pace instead of staying hot.
+      if (repositioning && Math.abs(delta) < CATCH_UP_RELEASE_LINES) {
+        repositioning = false;
+      }
+
+      /// Proportional approach used for every REPOSITION, in either
+      /// direction: speed is the remaining gap over a time constant,
+      /// clamped to the reposition ceiling. Signed step, in lines.
+      const repositionStep = (signedGap) => {
+        const gap = Math.abs(signedGap);
+        if (gap <= REPOSITION_ARRIVE_LINES) return signedGap;   // land it
+        const ceiling = baseLinesPerSec * 4 * REPOSITION_MAX_MULTIPLIER;
+        const rate = Math.min(gap / REPOSITION_TIME_CONSTANT_SEC, ceiling);
+        return Math.sign(signedGap) * Math.min(gap, rate * dt);
+      };
 
       const baseMaxStep = baseLinesPerSec * 4 * dt;
       let step;
-      if (delta >= 0) {
+      if (delta < 0) {
+        // BACKWARD is always a reposition — the song never plays in
+        // reverse, so any backward gap means the performer moved.
+        step = repositionStep(delta);
+      } else if (repositioning) {
+        // FORWARD, but chasing a hand-scroll rather than reading along.
+        // Same controller, same ceiling: a drag behaves identically
+        // whichever way the performer moved.
+        step = repositionStep(delta);
+      } else {
+        // FORWARD, ordinary playback. Gentle tiers — this is the pace the
+        // audience is actually reading at.
         let boost;
         if (fastCatchUp) {
           boost = FAST_CATCH_UP_MULTIPLIER;
@@ -1609,21 +1965,6 @@
           boost = 1.0;
         }
         step = Math.min(delta, baseMaxStep * boost);
-      } else {
-        // BACKWARD: the master jumped back (repeated a verse, restarted a
-        // section). Speed is PROPORTIONAL to the remaining gap and capped
-        // at 2.5× the fastest forward speed, so a two-line correction
-        // crawls while a half-song jump moves right away and eases in as
-        // it lands — rather than every backward move travelling at one
-        // flat rate.
-        const gap = -delta;
-        if (gap <= BACKWARD_ARRIVE_LINES) {
-          step = delta;                       // close the last sliver outright
-        } else {
-          const ceiling = baseLinesPerSec * 4 * BACKWARD_MAX_MULTIPLIER;
-          const rate = Math.min(gap / BACKWARD_TIME_CONSTANT_SEC, ceiling);
-          step = -Math.min(gap, rate * dt);
-        }
       }
       displayedLineFloat += step;
     }
