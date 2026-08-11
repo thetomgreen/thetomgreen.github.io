@@ -287,12 +287,11 @@
   /// target is reached" rather than oscillating between tiers as the
   /// gap closes.
   let fastCatchUp = false;
-  /// Sticky "we are chasing a hand-scroll" latch. Set when the performer
-  /// repositions (a discontinuity in elapsed, or a changed scroll
-  /// fraction outside play mode); released once we arrive. While set,
-  /// FORWARD motion uses the reposition controller instead of the gentle
-  /// reading tiers, so a drag is followed at the same speed in either
-  /// direction rather than snapping one way and easing the other.
+  /// Sticky "the performer is hand-scrolling" latch. Armed by either
+  /// seek detector — a discontinuity in elapsed, or a changed scroll
+  /// fraction outside play mode — in EITHER direction, and released on
+  /// arrival. While set, the page travels at the flat maximum
+  /// reposition rate regardless of direction or distance.
   let repositioning = false;
   /// Threshold (in line-floats) for "target reached" when releasing the
   /// sticky catch-up state. Half a line is tight enough to feel like an
@@ -302,23 +301,15 @@
   /// 2.5× the existing "faster" tier of 1.5× per spec.
   const FAST_CATCH_UP_MULTIPLIER = 1.5 * 2.5;
 
-  // --- Repositioning -----------------------------------------------------
-  // A REPOSITION is any move that isn't the song playing on: the performer
-  // dropping back to repeat a verse, or hand-scrolling the chart. It gets
-  // its own speed limit, well above the forward reading pace, because
-  // dawdling through one means the audience reads the wrong part of the
-  // song for the whole journey.
-  //
-  // The ceiling is 2.5x the fastest FORWARD speed (2.5x the catch-up tier)
-  // and applies IN BOTH DIRECTIONS. Ordinary forward playback keeps the
-  // gentle tiers — this ceiling is only reached when the page is chasing a
-  // reposition rather than reading along.
-  //
-  // An earlier version snapped instantly on a forward hand-scroll while
-  // backward stayed rate-limited, which made the same gesture behave
-  // completely differently depending on which way the performer dragged.
-  const REPOSITION_MAX_MULTIPLIER = FAST_CATCH_UP_MULTIPLIER * 2.5;
-  /// The approach is PROPORTIONAL, not constant-rate: speed is the
+  // --- Backward tracking -------------------------------------------------
+  // When the master jumps BACKWARD (repeat a verse, restart a section) the
+  // page is allowed to travel back faster than it ever travels forward:
+  // the ceiling is 2.5× the fastest forward speed, i.e. 2.5× the catch-up
+  // tier. Forward motion is what the audience reads along with, so it stays
+  // gentle; backward motion is a reposition, and dawdling through it means
+  // the audience is reading the wrong part of the song the whole time.
+  const BACKWARD_MAX_MULTIPLIER = FAST_CATCH_UP_MULTIPLIER * 2.5;
+  /// Backward approach is PROPORTIONAL, not constant-rate: speed is the
   /// remaining gap divided by this time constant, clamped to the ceiling
   /// above. So a small correction crawls while a big jump starts at the
   /// ceiling and eases in.
@@ -327,18 +318,18 @@
   /// control has a long exponential tail, so a larger constant is much
   /// slower than the ceiling suggests — at 1.5 s a half-song jump needed
   /// 9.8 s to settle, which is not "rapid" by any reading. At 0.6 s:
-  ///   move 30 lines → full ceiling, visually landed 3.4 s, settled 4.8 s
-  ///   move  3 lines → peaks 5.0 lines/s, settled 2.4 s
-  ///   move  1 line  → peaks 1.7 lines/s (5x natural), settled 1.8 s
+  ///   back 30 lines → full ceiling, visually landed 3.4 s, settled 4.8 s
+  ///   back  3 lines → peaks 5.0 lines/s, settled 2.4 s
+  ///   back  1 line  → peaks 1.7 lines/s (5x natural), settled 1.8 s
   /// i.e. a half-song jump moves ~7.5x faster than a one-line nudge.
-  const REPOSITION_TIME_CONSTANT_SEC = 0.6;
+  const BACKWARD_TIME_CONSTANT_SEC = 0.6;
   /// Exponential approach never mathematically arrives — close the last
   /// sliver in one step rather than asymptoting forever. Keep this SMALL:
   /// the closing step lands in a single frame, so it travels at
-  /// `REPOSITION_ARRIVE_LINES / dt` lines/sec — at 0.25 that's ~15 lines/s
+  /// `BACKWARD_ARRIVE_LINES / dt` lines/sec — at 0.25 that's ~15 lines/s
   /// on a 60 Hz display, which would breach the ceiling above. At 0.05
   /// (≈1 px, invisible) the peak stays exactly on the ceiling.
-  const REPOSITION_ARRIVE_LINES = 0.05;
+  const BACKWARD_ARRIVE_LINES = 0.05;
 
   // --- Safe scroll mode --------------------------------------------------
   /// How far the DOM's scrollTop may drift from the value we last wrote
@@ -612,15 +603,22 @@
 
     // Did the performer REPOSITION rather than just play on? Compare this
     // tick's elapsed against what the previous tick plus wall time
-    // predicted. A hand-scroll moves virtualElapsed discontinuously; left
-    // to the ordinary forward tiers the page would crawl after it for
-    // several seconds, which is what made a scroll right after the song
-    // started feel broken.
+    // predicted. A hand-scroll moves virtualElapsed discontinuously, and
+    // slewing toward it takes seconds — snap instead so the page follows
+    // the performer's scroll straight away, even before it has started
+    // scrolling on its own.
+    // FORWARD discontinuities only. A backward jump is also a reposition,
+    // but it is deliberately NOT snapped: the proportional backward
+    // controller (see BACKWARD_* above) exists precisely so the audience
+    // can see where the performer went when they drop back to repeat a
+    // verse, and it was tuned and confirmed on device. Snapping every
+    // discontinuity would have silently thrown that away, because a
+    // hand-scroll and a backward tracking correction are indistinguishable
+    // on the wire — both arrive as nothing but a changed `elapsed`.
     //
-    // BOTH directions arm the latch, and the reposition controller then
-    // moves at the same ceiling either way. An earlier version snapped
-    // forward and rate-limited backward, so the identical gesture behaved
-    // completely differently depending on which way the performer dragged.
+    // Forward is the direction that was actually hurting: the page holding
+    // at the top while the performer scrolls ahead, then crawling after
+    // them at the forward cap for several seconds.
     const nowMs = performance.now();
     if (prevSeekElapsed !== null) {
       const gap = (nowMs - prevSeekAt) / 1000;
@@ -641,8 +639,9 @@
     // not move at all: the position arrives as `scroll_fraction`.
     //
     // No prediction is needed here. Nothing advances by itself outside play
-    // mode, so a changed fraction is always a human dragging — in either
-    // direction, both rate-limited to the same reposition ceiling.
+    // mode, so a changed fraction is always a human dragging. Forward-only,
+    // matching the elapsed rule, so a backward drag still travels visibly
+    // under the proportional backward controller.
     if (!serverInPlay && serverScrollFraction !== null) {
       if (prevSeekFraction !== null &&
           Math.abs(serverScrollFraction - prevSeekFraction) > SEEK_FRACTION_THRESHOLD &&
@@ -1914,45 +1913,39 @@
       // the slower tier as the gap closes through the 1.5-screen
       // threshold and the chase would feel uneven.
       // Arm the catch-up latch on FORWARD gaps only. Backward motion is
-      // governed by the reposition controller below, which is already
-      // faster than any forward tier — letting a backward gap arm the
-      // forward latch would just leave it stuck on afterwards.
+      // governed by its own proportional controller below, which is
+      // already faster than any forward tier — letting a backward gap
+      // arm the forward latch would just leave it stuck on afterwards.
       if (delta > 0 && screensAhead > 1.5) {
         fastCatchUp = true;
       } else if (Math.abs(delta) < CATCH_UP_RELEASE_LINES) {
         fastCatchUp = false;
       }
-      // Release the hand-scroll latch once we've arrived, so the page
+      // Release the hand-scroll latch once we have arrived, so the page
       // drops back to ordinary reading pace instead of staying hot.
       if (repositioning && Math.abs(delta) < CATCH_UP_RELEASE_LINES) {
         repositioning = false;
       }
 
-      /// Proportional approach used for every REPOSITION, in either
-      /// direction: speed is the remaining gap over a time constant,
-      /// clamped to the reposition ceiling. Signed step, in lines.
-      const repositionStep = (signedGap) => {
-        const gap = Math.abs(signedGap);
-        if (gap <= REPOSITION_ARRIVE_LINES) return signedGap;   // land it
-        const ceiling = baseLinesPerSec * 4 * REPOSITION_MAX_MULTIPLIER;
-        const rate = Math.min(gap / REPOSITION_TIME_CONSTANT_SEC, ceiling);
-        return Math.sign(signedGap) * Math.min(gap, rate * dt);
-      };
-
       const baseMaxStep = baseLinesPerSec * 4 * dt;
+      /// The flat maximum: 2.5x the fastest forward reading speed. This is
+      /// the ceiling the backward controller is allowed to reach, and a
+      /// hand-scroll travels AT it — not proportionally up to it.
+      const repositionRate = baseLinesPerSec * 4 * BACKWARD_MAX_MULTIPLIER;
+
       let step;
-      if (delta < 0) {
-        // BACKWARD is always a reposition — the song never plays in
-        // reverse, so any backward gap means the performer moved.
-        step = repositionStep(delta);
-      } else if (repositioning) {
-        // FORWARD, but chasing a hand-scroll rather than reading along.
-        // Same controller, same ceiling: a drag behaves identically
-        // whichever way the performer moved.
-        step = repositionStep(delta);
-      } else {
-        // FORWARD, ordinary playback. Gentle tiers — this is the pace the
-        // audience is actually reading at.
+      if (repositioning) {
+        // HAND-SCROLL. The performer is dragging the chart, and the page
+        // follows at the flat maximum rate whichever way they went and
+        // however far — a drag is a deliberate "look here now", so there
+        // is nothing to be gained by easing into it. Distinct from the
+        // proportional controller below, which shapes the page's response
+        // to the song's own position moving.
+        const gap = Math.abs(delta);
+        step = gap <= BACKWARD_ARRIVE_LINES
+          ? delta                                  // land the last sliver
+          : Math.sign(delta) * Math.min(gap, repositionRate * dt);
+      } else if (delta >= 0) {
         let boost;
         if (fastCatchUp) {
           boost = FAST_CATCH_UP_MULTIPLIER;
@@ -1965,6 +1958,21 @@
           boost = 1.0;
         }
         step = Math.min(delta, baseMaxStep * boost);
+      } else {
+        // BACKWARD: the master jumped back (repeated a verse, restarted a
+        // section). Speed is PROPORTIONAL to the remaining gap and capped
+        // at 2.5× the fastest forward speed, so a two-line correction
+        // crawls while a half-song jump moves right away and eases in as
+        // it lands — rather than every backward move travelling at one
+        // flat rate.
+        const gap = -delta;
+        if (gap <= BACKWARD_ARRIVE_LINES) {
+          step = delta;                       // close the last sliver outright
+        } else {
+          const ceiling = baseLinesPerSec * 4 * BACKWARD_MAX_MULTIPLIER;
+          const rate = Math.min(gap / BACKWARD_TIME_CONSTANT_SEC, ceiling);
+          step = -Math.min(gap, rate * dt);
+        }
       }
       displayedLineFloat += step;
     }
