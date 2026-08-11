@@ -184,15 +184,25 @@
   //                  autonomous time-based rate while the master is
   //                  playing. Hold position when paused.
   //
-  // Per-song detachment is cleared on song change and on master "stop"
-  // (i.e. when serverInPlay falls). Per-viewer toggle persists across
-  // sessions (localStorage).
+  // Per-song detachment is cleared on song change. The per-viewer Follow
+  // toggle is session-only — every page load starts in following mode.
   // -------------------------------------------------------------------
 
-  /// Per-viewer toggle. Default ON. Persists across visits so a viewer
-  /// who wants to read at their own pace doesn't have to re-flip it
-  /// every time they reopen the page.
-  let trackingEnabled = localStorage.getItem(lsKey('trackMaster')) !== 'false';
+  /// Per-viewer toggle. Always starts ON, every load.
+  ///
+  /// This deliberately does NOT persist. It used to be remembered in
+  /// localStorage, which meant one tap of Follow — to read back a verse at
+  /// a gig, say — silently disabled tracking on every future visit, long
+  /// after the moment had passed. The audience's expectation when they open
+  /// the page is that it follows the performer; that's the whole point of
+  /// scanning the code, and the performer's own "Followers track my
+  /// position" switch being ON should not be contradicted by a stale
+  /// preference the viewer set weeks ago. Detaching stays a within-session
+  /// state, cleared by a reload.
+  let trackingEnabled = true;
+  // Drop the key any older build may have left behind, so a viewer who is
+  // already carrying `false` isn't stuck with it.
+  try { localStorage.removeItem(lsKey('trackMaster')); } catch {}
   /// Master-side override carried in every TickPayload. Default `true`
   /// for legacy iOS builds that don't include the field. When `false`,
   /// the master has paused live position-tracking for ALL followers —
@@ -200,9 +210,27 @@
   /// it back on.
   let masterFollowEnabled = true;
   /// Per-song runtime detachment. Goes true when the user manually
-  /// scrolls during master playback. Cleared on song change OR when
-  /// the master leaves play mode (= "hit stop").
+  /// scrolls, at any point — before play, mid-song, or while paused.
+  /// Cleared on song change OR when the master leaves play mode
+  /// (= "hit stop").
   let detachedDuringSong = false;
+  /// True once the master has been seen playing at least once on the
+  /// CURRENT song. Safe scroll mode creeps only after this — before the
+  /// performer has started, a detached viewer's page holds still rather
+  /// than crawling away from line 1. Reset on every song change.
+  let songHasStarted = false;
+  /// Safe scroll mode's own float position, in pixels. The DOM's scrollTop
+  /// is integer-ish in most browsers, and the song-rate creep is a fraction
+  /// of a pixel per frame (~0.3 px at 60 Hz for a 3-minute song), so
+  /// accumulating directly into scrollTop would round to zero every frame
+  /// and the page would never move. We integrate here and write the result.
+  let safeScrollTop = 0;
+  /// The scrollTop we last wrote ourselves. Any larger difference on the
+  /// next frame means a human scrolled — that's the detach signal, and in
+  /// safe mode it's also how we adopt their position instead of fighting
+  /// it. `null` suppresses the check for one frame (after a render or an
+  /// explicit repositioning, where we moved the page deliberately).
+  let lastAppliedScrollTop = null;
   /// Edge-detection bookkeeping for rising-edge "master hit play" snap
   /// and falling-edge "master hit stop" detach-reset.
   let prevServerPlaying = false;
@@ -220,6 +248,42 @@
   /// Multiplier the catch-up tier applies on top of the base slew rate.
   /// 2.5× the existing "faster" tier of 1.5× per spec.
   const FAST_CATCH_UP_MULTIPLIER = 1.5 * 2.5;
+
+  // --- Backward tracking -------------------------------------------------
+  // When the master jumps BACKWARD (repeat a verse, restart a section) the
+  // page is allowed to travel back faster than it ever travels forward:
+  // the ceiling is 2.5× the fastest forward speed, i.e. 2.5× the catch-up
+  // tier. Forward motion is what the audience reads along with, so it stays
+  // gentle; backward motion is a reposition, and dawdling through it means
+  // the audience is reading the wrong part of the song the whole time.
+  const BACKWARD_MAX_MULTIPLIER = FAST_CATCH_UP_MULTIPLIER * 2.5;
+  /// Backward approach is PROPORTIONAL, not constant-rate: speed is the
+  /// remaining gap divided by this time constant, clamped to the ceiling
+  /// above. So a small correction crawls while a big jump starts at the
+  /// ceiling and eases in.
+  ///
+  /// 0.6 s chosen by simulation (60-line / 3-minute song). Proportional
+  /// control has a long exponential tail, so a larger constant is much
+  /// slower than the ceiling suggests — at 1.5 s a half-song jump needed
+  /// 9.8 s to settle, which is not "rapid" by any reading. At 0.6 s:
+  ///   back 30 lines → full ceiling, visually landed 3.4 s, settled 4.8 s
+  ///   back  3 lines → peaks 5.0 lines/s, settled 2.4 s
+  ///   back  1 line  → peaks 1.7 lines/s (5x natural), settled 1.8 s
+  /// i.e. a half-song jump moves ~7.5x faster than a one-line nudge.
+  const BACKWARD_TIME_CONSTANT_SEC = 0.6;
+  /// Exponential approach never mathematically arrives — close the last
+  /// sliver in one step rather than asymptoting forever. Keep this SMALL:
+  /// the closing step lands in a single frame, so it travels at
+  /// `BACKWARD_ARRIVE_LINES / dt` lines/sec — at 0.25 that's ~15 lines/s
+  /// on a 60 Hz display, which would breach the ceiling above. At 0.05
+  /// (≈1 px, invisible) the peak stays exactly on the ceiling.
+  const BACKWARD_ARRIVE_LINES = 0.05;
+
+  // --- Safe scroll mode --------------------------------------------------
+  /// How far the DOM's scrollTop may drift from the value we last wrote
+  /// before we conclude a human moved it. Covers sub-pixel rounding and
+  /// browser scroll-anchoring jitter without swallowing a real gesture.
+  const USER_SCROLL_TOLERANCE_PX = 2;
 
   $zoomIn.addEventListener('click', () => { zoom = clamp(zoom + 2, 12, 64); applyZoom(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
   $zoomOut.addEventListener('click', () => { zoom = clamp(zoom - 2, 12, 64); applyZoom(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
@@ -290,25 +354,52 @@
   // the song title so the viewer knows why their toggle isn't taking
   // effect.
   const $toggleFollow = document.getElementById('toggle-follow');
+
+  /// Is this viewer ACTUALLY tracking the performer right now? All three
+  /// conditions have to hold, and the button must reflect this rather than
+  /// just the toggle's own value — otherwise scrolling into safe scroll
+  /// mode leaves the button lit, and the page looks like it's still
+  /// following when it isn't. That mismatch is unreadable to a viewer and
+  /// undiagnosable to us.
+  function effectivelyFollowing() {
+    return trackingEnabled && masterFollowEnabled && !detachedDuringSong;
+  }
+
+  // Cache the rendered state: applyFollowToggle is called every frame, and
+  // touching DOM attributes 60x/sec for no reason is wasteful.
+  let renderedFollowOn = null;
+  let renderedMasterOn = null;
   function applyFollowToggle() {
     if (!$toggleFollow) return;
-    $toggleFollow.setAttribute('aria-pressed', trackingEnabled ? 'true' : 'false');
+    const on = effectivelyFollowing();
+    if (on !== renderedFollowOn) {
+      $toggleFollow.setAttribute('aria-pressed', on ? 'true' : 'false');
+      renderedFollowOn = on;
+    }
     applyMasterStatus();
   }
   function applyMasterStatus() {
     if (!$toggleFollow) return;
-    // Dim the per-viewer toggle when the master has paused tracking
-    // — the personal preference is still stored, just not in effect.
+    if (masterFollowEnabled === renderedMasterOn) return;
+    renderedMasterOn = masterFollowEnabled;
+    // Dim the toggle when the performer has paused tracking for everyone —
+    // tapping it can't help, and the viewer deserves to know why.
     $toggleFollow.style.opacity = masterFollowEnabled ? '' : '0.5';
     $toggleFollow.title = masterFollowEnabled
-      ? 'Follow the master\'s position in the song'
+      ? 'Follow the performer\'s position — tap to read at your own pace'
       : 'Performer paused live position-tracking';
   }
   applyFollowToggle();
   if ($toggleFollow) {
     $toggleFollow.addEventListener('click', () => {
-      trackingEnabled = !trackingEnabled;
-      localStorage.setItem(lsKey('trackMaster'), String(trackingEnabled));
+      // The button acts on the EFFECTIVE mode, not the raw toggle. If the
+      // viewer has scrolled away (detachedDuringSong) the button already
+      // reads "not following", so a tap must re-attach — under the old
+      // toggle-only logic that same tap flipped `trackingEnabled` to false
+      // and appeared to do nothing at all.
+      // Session-only: intentionally not written to localStorage — see the
+      // declaration of `trackingEnabled`.
+      trackingEnabled = !effectivelyFollowing();
       applyFollowToggle();
       if (trackingEnabled) {
         // Re-engaging: clear any runtime detach + the catch-up latch,
@@ -317,6 +408,13 @@
         detachedDuringSong = false;
         fastCatchUp = false;
         needSnap = true;
+      } else {
+        // Disengaging: this is request #3 — the Follow button drops the
+        // viewer into exactly the same safe scroll mode a manual scroll
+        // produces. Adopt the current position as the creep origin so the
+        // page carries on from where they're looking.
+        safeScrollTop = $scroll.scrollTop;
+        lastAppliedScrollTop = $scroll.scrollTop;
       }
     });
   }
@@ -332,14 +430,21 @@
     'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar',
   ]);
   function noteManualScroll() {
-    // Only counts during actual playback per spec ("if a follower
-    // scrolls the song manually during playback"). Pre-play /
-    // paused scrolls are no-ops here.
-    if (!serverPlaying) return;
-    if (!trackingEnabled) return;       // already in autonomous mode
+    // Counts at ANY point in the song — before the master presses play,
+    // mid-performance, or while they're paused. Scrolling is an explicit
+    // "let me read at my own pace", and it shouldn't matter what the
+    // performer's transport happens to be doing at that instant.
     if (detachedDuringSong) return;     // already detached
     detachedDuringSong = true;
     fastCatchUp = false;
+    // Adopt wherever the viewer just put the page as safe mode's origin,
+    // so the creep continues from their position rather than snapping
+    // back to the tracked one.
+    safeScrollTop = $scroll.scrollTop;
+    // Reflect it on the button immediately rather than waiting for the
+    // next frame — this is the viewer's only feedback that the scroll
+    // took effect.
+    applyFollowToggle();
   }
   $scroll.addEventListener('wheel', noteManualScroll, { passive: true });
   $scroll.addEventListener('touchmove', (e) => {
@@ -347,14 +452,16 @@
     // above — never a scroll.
     if (e.touches && e.touches.length === 1) noteManualScroll();
   }, { passive: true });
-  $scroll.addEventListener('pointerdown', (e) => {
-    // Catches scrollbar drag on desktop. Touch is handled above; we
-    // only react to genuine mouse/pen pointer-downs.
-    if (e.pointerType && e.pointerType !== 'touch') noteManualScroll();
-  }, { passive: true });
   document.addEventListener('keydown', (e) => {
     if (SCROLL_KEYS.has(e.key)) noteManualScroll();
   });
+  // NOTE: there is deliberately no `pointerdown` listener. It used to
+  // stand in for "desktop scrollbar drag", but it fires on ANY click in
+  // the scroll area — harmless while detachment required active playback,
+  // a trap now that any scroll detaches (a viewer tapping the page would
+  // silently stop following). The scroll-position delta check in the loop
+  // catches scrollbar drags, and every other input method, by observing
+  // the effect rather than guessing at the gesture.
 
   /// Called after every server-state update (tick OR applyRow). Rising
   /// edge of serverPlaying ⇒ master just hit play; snap this viewer to
@@ -366,12 +473,20 @@
     const inPlayFell   =  prevServerInPlay && !serverInPlay;
     prevServerPlaying = serverPlaying;
     prevServerInPlay  = serverInPlay;
+    // Latch "this song is under way". Safe scroll mode creeps only after
+    // this, and once set it stays set for the rest of the song no matter
+    // what the master's transport does — a detached viewer keeps reading
+    // at song pace through the performer's pauses and stops.
+    if (serverPlaying) songHasStarted = true;
     if (playingRose && trackingEnabled && !detachedDuringSong) {
       needSnap = true;
       fastCatchUp = false;
     }
     if (inPlayFell) {
-      detachedDuringSong = false;
+      // Master left play mode. Release the catch-up latch, but do NOT
+      // clear the viewer's detachment: safe scroll mode is meant to
+      // survive the performer stopping. Only a song change (or tapping
+      // Follow) re-attaches them.
       fastCatchUp = false;
     }
     // Late-joiner: the first live tick after join carries the master's
@@ -455,6 +570,7 @@
       `sub: ${(r.song_subtitle ?? '∅').slice(0,30)} | title: ${(r.song_title ?? '∅').slice(0,30)}\n` +
       `mode: ${$body.dataset.mode || '?'} | lines: ${lineAnchors.length}\n` +
       `track:${trackingEnabled ? 'on' : 'off'} masterFollow:${masterFollowEnabled ? 'on' : 'off'} det:${detachedDuringSong ? 'Y' : 'n'} fc:${fastCatchUp ? 'Y' : 'n'} sP:${serverPlaying ? 'Y' : 'n'} sI:${serverInPlay ? 'Y' : 'n'}\n` +
+      `started:${songHasStarted ? 'Y' : 'n'} safeTop:${safeScrollTop.toFixed(1)} lf:${displayedLineFloat.toFixed(2)} sf:${serverScrollFraction === null ? '∅' : serverScrollFraction.toFixed(3)}\n` +
       `iOS:\n${iosLastLines.slice(-6).join('\n')}`;
   }
 
@@ -641,6 +757,11 @@
       // the master genuinely went paused→playing across the change.
       detachedDuringSong = false;
       fastCatchUp = false;
+      // A new song hasn't started until we see the master playing it —
+      // even if the previous one was mid-flight. Cleared before the
+      // transition helper runs so the incoming row's is_playing can
+      // immediately re-latch it.
+      songHasStarted = false;
       noteServerPlaybackTransition();
     }
 
@@ -683,6 +804,13 @@
           needSnap = false;
           awaitingFirstLiveTick = false;  // not a late-joiner anymore
         }
+        // We just moved the page ourselves (to the top, or about to snap).
+        // Re-baseline BOTH trackers to the value we wrote: excusing our own
+        // write while leaving the detector armed. (Disarming it with `null`
+        // instead opened a window where a scroll landing before the next
+        // frame was silently swallowed.)
+        safeScrollTop = $scroll.scrollTop;
+        lastAppliedScrollTop = $scroll.scrollTop;
         hasReceivedFirstRow = true;
       }
     }
@@ -724,8 +852,17 @@
       serverPlaying,
       serverInPlay,
       displayedLineFloat,
+      songHasStarted,
+      safeScrollTop,
+      inSafeScrollMode: !masterFollowEnabled || !trackingEnabled || detachedDuringSong,
     });
     window.__simulateManualScroll = () => noteManualScroll();
+    /// Drive a real user-style scroll: move the DOM directly, exactly as a
+    /// finger or wheel would, so the loop's position-delta detector is what
+    /// notices — not a hand-called hook.
+    window.__scrollBy = (px) => { $scroll.scrollTop = $scroll.scrollTop + px; };
+    window.__setScrollFraction = (f) => { serverScrollFraction = f; };
+    window.__tapFollow = () => $toggleFollow?.click();
     window.__setMasterFollow = (enabled) => {
       const prev = masterFollowEnabled;
       masterFollowEnabled = !!enabled;
@@ -1297,6 +1434,37 @@
     return Math.max(0, centerY - viewportH / 2);
   }
 
+  /// Inverse of `lineFloatToScrollTop`: which line-float is currently under
+  /// the viewport centre. Used when leaving safe scroll mode, so the gap the
+  /// tracker has to close is measured from where the viewer actually
+  /// scrolled to rather than from the stale tracked position.
+  function scrollTopToLineFloat(top) {
+    if (lineAnchors.length === 0) return 0;
+    const centerY = top + $scroll.clientHeight / 2;
+    const last = lineAnchors.length - 1;
+    if (centerY <= lineAnchors[0].centerY) return 0;
+    if (centerY >= lineAnchors[last].centerY) return last;
+    // centerY is monotonically non-decreasing across anchors (they're laid
+    // out top to bottom), so a binary search is valid and O(log n).
+    let lo = 0, hi = last;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (lineAnchors[mid].centerY <= centerY) lo = mid; else hi = mid;
+    }
+    const span = Math.max(0.0001, lineAnchors[hi].centerY - lineAnchors[lo].centerY);
+    return lo + (centerY - lineAnchors[lo].centerY) / span;
+  }
+
+  /// Pixels-per-second the page creeps at in safe scroll mode: the whole
+  /// scrollable extent spread over the song's length, i.e. "the rate
+  /// determined by the song". Derived from live layout so it stays correct
+  /// across zoom changes and the chords toggle.
+  function safeScrollPixelsPerSecond() {
+    const range = Math.max(0, $scroll.scrollHeight - $scroll.clientHeight);
+    const secs = Math.max(30, (row && row.length_seconds) || 180);
+    return range / secs;
+  }
+
   /// Compute the host's current line-float position from server state.
   /// Returns null when there's nothing meaningful to point at (host paused
   /// and hasn't reported a scroll position).
@@ -1328,29 +1496,60 @@
     requestAnimationFrame(loop);
 
     if (!row) return;
+    // Keep the Follow button honest about the effective mode. Detachment
+    // can be set from a gesture listener or from the scroll-delta check
+    // below, and the master override arrives on ticks, so the single
+    // reliable place to reconcile the UI is once per frame. Cheap — it
+    // only touches the DOM when the state actually changes.
+    applyFollowToggle();
     if ($body.dataset.mode === 'list') return;
     if (lineAnchors.length === 0) return;
 
     const baseLinesPerSec = lineAnchors.length / Math.max(30, row.length_seconds || 180);
 
-    // DETACHED: tracking toggled off, OR this viewer scrolled
-    // manually during the current song's playback. Advance at the
-    // autonomous time-based rate while the master is playing; hold
-    // position when paused so we don't drift forward over a long
-    // pause. Per-song detachment is reset on song change and on
-    // master "stop" (handled in the transition helper).
-    // Master-side override wins over the per-viewer toggle: when the
-    // performer's "Followers track my position" is off, every viewer
-    // is detached regardless of their personal Follow button.
-    const inDetachedMode = !masterFollowEnabled || !trackingEnabled || detachedDuringSong;
-    if (inDetachedMode) {
-      if (serverPlaying) {
-        displayedLineFloat = Math.min(
-          lineAnchors.length - 1,
-          displayedLineFloat + baseLinesPerSec * dt
-        );
+    // Did a human move the page since our last write? Observing the effect
+    // beats guessing at the gesture: this catches wheel, touch drag,
+    // scrollbar drag, keyboard, momentum fling and browser find-in-page
+    // alike. `null` means we deliberately repositioned and should skip one
+    // frame. The gesture listeners above still fire first where they can —
+    // they detach a frame earlier, which is imperceptible but free.
+    if (lastAppliedScrollTop !== null &&
+        Math.abs($scroll.scrollTop - lastAppliedScrollTop) > USER_SCROLL_TOLERANCE_PX) {
+      noteManualScroll();
+    }
+
+    // SAFE SCROLL MODE: tracking toggled off (request #3), OR this viewer
+    // scrolled the page themselves (request #2), OR the performer has
+    // paused tracking for everyone. The page keeps creeping forward at the
+    // song's own rate — regardless of what the master's transport is doing,
+    // once the song has been seen playing — and the viewer can scroll
+    // wherever they like without being dragged back.
+    //
+    // The critical difference from the old detached branch: we do NOT
+    // recompute scrollTop from a tracked line position every frame. That
+    // overwrote the viewer's gesture ~16 ms after they made it, which is
+    // what made "free scrolling" impossible. Here we integrate a float in
+    // pixel space and add to it, so a manual scroll simply moves the
+    // origin and the creep carries on from there.
+    const inSafeScrollMode = !masterFollowEnabled || !trackingEnabled || detachedDuringSong;
+    if (inSafeScrollMode) {
+      const maxTop = Math.max(0, $scroll.scrollHeight - $scroll.clientHeight);
+      // Re-adopt the live position ONLY when someone else moved it (the
+      // viewer scrolling, momentum settling, reflow). Adopting every frame
+      // would round our sub-pixel accumulator away each time and the creep
+      // would never advance.
+      if (lastAppliedScrollTop === null ||
+          Math.abs($scroll.scrollTop - lastAppliedScrollTop) > USER_SCROLL_TOLERANCE_PX) {
+        safeScrollTop = clamp($scroll.scrollTop, 0, maxTop);
       }
-      $scroll.scrollTop = lineFloatToScrollTop(displayedLineFloat);
+      if (songHasStarted) {
+        safeScrollTop = Math.min(maxTop, safeScrollTop + safeScrollPixelsPerSecond() * dt);
+        $scroll.scrollTop = safeScrollTop;
+      }
+      lastAppliedScrollTop = $scroll.scrollTop;
+      // Keep the tracked position aligned with where the viewer actually
+      // is, so tapping Follow measures its catch-up from reality.
+      displayedLineFloat = scrollTopToLineFloat($scroll.scrollTop);
       if ((now - lastTickAt) < 4000) lastSeenTickAt = now;
       return;
     }
@@ -1358,7 +1557,12 @@
     // NORMAL tracking: chase the master's target position.
     const target = targetLineFloat(now);
     if (target === null) {
-      // Master paused with no scroll signal — hold position.
+      // Master paused with no scroll signal — hold position. Still arm the
+      // user-scroll detector against the CURRENT position: this is the
+      // state the page sits in before the performer ever presses play, and
+      // leaving it unarmed here meant a pre-play scroll was never noticed.
+      lastAppliedScrollTop = $scroll.scrollTop;
+      safeScrollTop = $scroll.scrollTop;
       return;
     }
 
@@ -1380,26 +1584,47 @@
       // target. Without the latch, the rate would oscillate back to
       // the slower tier as the gap closes through the 1.5-screen
       // threshold and the chase would feel uneven.
-      if (screensAhead > 1.5) {
+      // Arm the catch-up latch on FORWARD gaps only. Backward motion is
+      // governed by its own proportional controller below, which is
+      // already faster than any forward tier — letting a backward gap
+      // arm the forward latch would just leave it stuck on afterwards.
+      if (delta > 0 && screensAhead > 1.5) {
         fastCatchUp = true;
       } else if (Math.abs(delta) < CATCH_UP_RELEASE_LINES) {
         fastCatchUp = false;
       }
 
       const baseMaxStep = baseLinesPerSec * 4 * dt;
-      let boost;
-      if (fastCatchUp) {
-        boost = FAST_CATCH_UP_MULTIPLIER;
-      } else if (screensAhead > 1.0) {
-        // Existing "faster" tier — same threshold and multiplier as
-        // before, kept so behavior on modest deltas (1-1.5 screens)
-        // is unchanged.
-        boost = 1.5;
+      let step;
+      if (delta >= 0) {
+        let boost;
+        if (fastCatchUp) {
+          boost = FAST_CATCH_UP_MULTIPLIER;
+        } else if (screensAhead > 1.0) {
+          // Existing "faster" tier — same threshold and multiplier as
+          // before, kept so behavior on modest deltas (1-1.5 screens)
+          // is unchanged.
+          boost = 1.5;
+        } else {
+          boost = 1.0;
+        }
+        step = Math.min(delta, baseMaxStep * boost);
       } else {
-        boost = 1.0;
+        // BACKWARD: the master jumped back (repeated a verse, restarted a
+        // section). Speed is PROPORTIONAL to the remaining gap and capped
+        // at 2.5× the fastest forward speed, so a two-line correction
+        // crawls while a half-song jump moves right away and eases in as
+        // it lands — rather than every backward move travelling at one
+        // flat rate.
+        const gap = -delta;
+        if (gap <= BACKWARD_ARRIVE_LINES) {
+          step = delta;                       // close the last sliver outright
+        } else {
+          const ceiling = baseLinesPerSec * 4 * BACKWARD_MAX_MULTIPLIER;
+          const rate = Math.min(gap / BACKWARD_TIME_CONSTANT_SEC, ceiling);
+          step = -Math.min(gap, rate * dt);
+        }
       }
-      const maxStep = baseMaxStep * boost;
-      const step = delta >= 0 ? Math.min(delta, maxStep) : Math.max(delta, -maxStep);
       displayedLineFloat += step;
     }
 
@@ -1407,6 +1632,11 @@
     // displayedLineFloat — applying the derived scrollTop directly is
     // smooth by construction. No pixel-space slew or snap branch needed.
     $scroll.scrollTop = lineFloatToScrollTop(displayedLineFloat);
+    // Record what we wrote so next frame can tell our own motion apart
+    // from the viewer's, and keep safe mode's origin warm in case they
+    // scroll (or tap Follow off) between now and then.
+    lastAppliedScrollTop = $scroll.scrollTop;
+    safeScrollTop = $scroll.scrollTop;
 
     // Track "fresh" state for the warning indicator.
     if ((now - lastTickAt) < 4000) lastSeenTickAt = now;
