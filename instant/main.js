@@ -414,9 +414,16 @@
   function reattachToMaster() {
     detachedDuringSong = false;
     fastCatchUp = false;
-    repositioning = false;
     safePlayOverride = null;
-    needSnap = true;
+    // TRAVEL to the performer's position rather than jumping to it. A snap
+    // is disorienting: the viewer has been reading somewhere of their own
+    // choosing, and teleporting them gives no sense of which way the song
+    // moved or how far. Arming the reposition latch scrolls them there at
+    // the flat maximum rate — the same speed a hand-scroll uses — in
+    // whichever direction the performer happens to be, and the latch
+    // releases itself on arrival.
+    repositioning = true;
+    needSnap = false;
   }
 
   const $togglePlay = document.getElementById('toggle-play');
