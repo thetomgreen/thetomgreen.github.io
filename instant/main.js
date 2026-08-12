@@ -21,27 +21,21 @@
   const SUPABASE_URL = "https://srneydgbhpovhhkkvkvi.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNybmV5ZGdiaHBvdmhoa2t2a3ZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MjQ2NTEsImV4cCI6MjA5NDQwMDY1MX0.rKVlG2Thgcl28jv0V9VQB6Y0visIMVoBeJ_V1RkjHCM";
 
-  // When a tick's elapsed differs from what the PREVIOUS tick plus wall
-  // time predicted by more than this, the performer repositioned (dragged
-  // the chart, or the tracker jumped) rather than simply played on. Those
-  // are followed by snapping, not by slewing.
+  // Hand-scroll detection, OUT OF PLAY MODE ONLY.
   //
-  // Without this the page took several seconds to catch up with a
-  // performer's hand-scroll: a drag moves virtualElapsed discontinuously,
-  // but the page could not tell that from ordinary playback drift, so it
-  // crawled toward the new position at the forward cap. Most visible right
-  // after the song starts, when the page is still holding at the top and a
-  // scroll should obviously be followed at once.
+  // Outside play mode nothing advances on its own, so the performer's
+  // `scroll_fraction` moves only when a human drags the chart. That makes it
+  // an unambiguous hand-scroll signal, and the page follows it at the flat
+  // maximum rate in either direction.
   //
-  // 1.0 s is comfortably above tick jitter at ~3 Hz (prediction error is
-  // well under half a second) while still catching any scroll worth more
-  // than a line or two. Smaller repositions are left to the normal slew,
-  // which handles them smoothly.
-  const SEEK_THRESHOLD_SEC = 1.0;
-  /// Equivalent for the out-of-play-mode `scroll_fraction` path. Small,
-  /// because the fraction only ever moves when a human drags — this exists
-  /// to ignore rounding, not to distinguish a drag from anything else.
-  /// 0.01 of a song is well under a line on any realistic chart.
+  // There is deliberately no in-play equivalent. Inferring a drag from a
+  // jump in `elapsed` looked reasonable but is not sound: virtualElapsed
+  // advances as `dt * multiplier` (speed nudges, audio-scroll tempo), so it
+  // is not on wall-clock time and any wall-clock prediction mis-fires during
+  // ordinary playback — which ran the page at 9.375x the base rate.
+  /// Threshold on the fraction. Small: it exists to ignore rounding, not to
+  /// distinguish a drag from anything else. 0.01 of a song is well under a
+  /// line on any realistic chart.
   const SEEK_FRACTION_THRESHOLD = 0.01;
 
   // NOTE: there is no lead-in CONSTANT any more. The lead-in is geometry,
@@ -267,14 +261,6 @@
   /// and falling-edge "master hit stop" detach-reset.
   let prevServerPlaying = false;
   let prevServerInPlay = false;
-  /// Seek detection: the last elapsed we saw, when we saw it, and whether
-  /// the performer was playing then — enough to predict what the next tick
-  /// SHOULD carry. A tick that misses that prediction is a reposition.
-  /// Reset to null on song change so a new song's elapsed is never compared
-  /// against the previous song's.
-  let prevSeekElapsed = null;
-  let prevSeekAt = 0;
-  let prevSeekPlaying = false;
   /// Same idea for the OUT-OF-PLAY-MODE path, where the performer's
   /// position arrives as `scroll_fraction` rather than `elapsed`. This one
   /// needs no prediction: outside play mode nothing advances on its own, so
@@ -619,18 +605,17 @@
     // Forward is the direction that was actually hurting: the page holding
     // at the top while the performer scrolls ahead, then crawling after
     // them at the forward cap for several seconds.
-    const nowMs = performance.now();
-    if (prevSeekElapsed !== null) {
-      const gap = (nowMs - prevSeekAt) / 1000;
-      const predicted = prevSeekPlaying ? prevSeekElapsed + gap : prevSeekElapsed;
-      if (Math.abs(serverElapsed - predicted) > SEEK_THRESHOLD_SEC && effectivelyFollowing()) {
-        repositioning = true;
-        fastCatchUp = false;
-      }
-    }
-    prevSeekElapsed = serverElapsed;
-    prevSeekAt = nowMs;
-    prevSeekPlaying = serverPlaying;
+    // NOTE: an in-play hand-scroll is deliberately NOT detected here.
+    // It would have to be inferred from a jump in `elapsed`, but the
+    // performer's virtualElapsed advances as `dt * multiplier`, where the
+    // multiplier carries their speed nudges and the audio-scroll tempo
+    // (PlaybackSession.swift) — so it is not on wall-clock time. Predicting
+    // it from wall time mis-fires during perfectly ordinary playback, which
+    // armed the hand-scroll latch and ran the page at 9.375x the base rate
+    // instead of 1x: the "much too rapid" forward scroll. Doing this
+    // properly needs iOS to flag a drag explicitly rather than us guessing
+    // from the numbers. Out of play mode the signal IS unambiguous — see
+    // the scroll_fraction check below.
 
     // The out-of-play-mode hand-scroll. This is the case requirement #1 is
     // literally about — the performer flicking through the chart before
@@ -941,7 +926,6 @@
       // seek baseline, both of which only made sense for the old song.
       safePlayOverride = null;
       safeElapsed = serverElapsed;
-      prevSeekElapsed = null;
       noteServerPlaybackTransition();
     }
 
@@ -1469,6 +1453,34 @@
       appendChunk('', lyricRaw);
       return pair;
     }
+
+    // How many chords hang entirely past the end of the lyric? Syllable
+    // pairing only makes sense while there is lyric text under the chords.
+    // With a short lyric under a long chord line — "Coach" under
+    // "G        D        Am        C        x4" — there is nothing to pair
+    // most of them with, and forcing it produced a wide unbreakable segment
+    // that wrapped onto its own row, so the chart read as three rows
+    // (G / Coach / D Am C x4) instead of the two the performer sees.
+    //
+    // Two or more overhanging chords means the line is really a chord ROW
+    // with a lyric under it, which is exactly how the iOS player draws it:
+    // one chord line, columns preserved, lyric beneath. Fall back to that.
+    // One overhanging chord is left to the run logic below, so an ordinary
+    // line whose last chord tips a character past the lyric keeps its
+    // chord-over-syllable alignment.
+    const overhang = tokens.filter(t => t.col >= lyricRaw.length).length;
+    if (overhang >= 2) {
+      pair.classList.add('chord-row-pair');
+      const chordRow = document.createElement('div');
+      chordRow.className = 'line chords chord-row';
+      chordRow.textContent = transposeChordLineString(chordRaw, currentTranspose);
+      const lyricRow = document.createElement('div');
+      lyricRow.className = 'line lyric chord-row-lyric';
+      lyricRow.textContent = lyricRaw.length > 0 ? lyricRaw : ' ';
+      pair.replaceChildren(chordRow, lyricRow);
+      return pair;
+    }
+
     if (tokens[0].col > 0) {
       appendChunk('', lyricRaw.substring(0, tokens[0].col));
     }

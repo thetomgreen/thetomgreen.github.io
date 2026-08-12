@@ -220,6 +220,28 @@ button#toggle-play { min-width: 3.4rem; }
   word-break: break-word;
   line-height: 1.25;
 }
+/* Chord-line-over-lyric fallback, used when a chord line runs well past
+ * its lyric (a short lyric under a long chord row). Two stacked rows, the
+ * way the iOS player draws it, rather than syllable pairing that would
+ * wrap the chords onto a line of their own. The chord row keeps its source
+ * columns and scrolls rather than wrapping, so the columns survive on a
+ * narrow screen instead of folding. */
+.chord-row-pair { display: block; }
+.chord-row {
+  white-space: pre;
+  /* .line sets overflow-wrap:anywhere for lyrics; that would still break
+   * this row mid-chord despite white-space:pre. Columns only survive if
+   * nothing is allowed to break. */
+  overflow-wrap: normal;
+  word-break: normal;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.chord-row::-webkit-scrollbar { display: none; }
+.chord-row-lyric { white-space: pre-wrap; }
+.song-body[data-show-chords="false"] .chord-row { display: none; }
+
 /* A run of chords with no lyric under them (chord line longer than its
  * lyric) is emitted as one segment whose internal spacing reproduces the
  * source columns. `pre-wrap` keeps those spaces (unlike the nowrap used
