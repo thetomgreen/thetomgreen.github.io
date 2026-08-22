@@ -223,8 +223,12 @@
   let masterFollowEnabled = true;
   /// Per-song runtime detachment. Goes true when the user manually
   /// scrolls, at any point — before play, mid-song, or while paused.
-  /// Cleared on song change OR when the master leaves play mode
-  /// (= "hit stop").
+  /// Cleared on a song change, or by tapping Follow. NOT cleared when the
+  /// master leaves play mode: safe scroll mode is meant to survive the
+  /// performer stopping, so a viewer reading at their own pace isn't yanked
+  /// back every time the song ends. (An earlier version of this comment
+  /// claimed "hit stop" cleared it; the `inPlayFell` branch below only
+  /// releases the catch-up latch.)
   let detachedDuringSong = false;
   /// True once the master has been seen playing at least once on the
   /// CURRENT song. Safe scroll mode creeps only after this — before the
@@ -424,6 +428,33 @@
     // releases itself on arrival.
     repositioning = true;
     needSnap = false;
+  }
+
+  /// Adopt the performer's "Followers track my position" switch, from either
+  /// source that carries it: a live tick, or the session row on join.
+  ///
+  /// It used to live in ticks alone, which are event-driven with no
+  /// heartbeat — sent on a transport change, song change, transpose or
+  /// hand-scroll and at no other time. A viewer who scanned the QR while the
+  /// performer's phone sat idle between songs could therefore go minutes
+  /// without hearing one, default to `true`, and be shown a Follow button the
+  /// performer had switched off: a control that cannot do anything, which is
+  /// the exact thing `applyMasterStatus` hides it to avoid. The row now
+  /// carries the flag too, so it is part of the join snapshot.
+  ///
+  /// `undefined`/non-boolean means the sender didn't include it (legacy iOS),
+  /// which is NOT the same as `false` — leave the current value alone.
+  function applyMasterFollow(value) {
+    if (typeof value !== 'boolean') return;
+    const prev = masterFollowEnabled;
+    masterFollowEnabled = value;
+    // A false→true rising edge re-attaches tracking followers so they travel
+    // to the performer's current position rather than sitting where whatever
+    // free-scrolling they did left them.
+    if (!prev && masterFollowEnabled && trackingEnabled && !detachedDuringSong) {
+      reattachToMaster();
+    }
+    applyMasterStatus();
   }
 
   const $togglePlay = document.getElementById('toggle-play');
@@ -835,6 +866,7 @@
     'id', 'song_title', 'song_subtitle', 'song_raw_text', 'source_app',
     'transpose_semitones', 'bpm', 'length_seconds', 'tempo_acceleration',
     'is_in_play_mode', 'is_playing', 'virtual_elapsed',
+    'follow_master_position',
     'updated_at', 'expires_at', 'created_at',
   ].join(',');
 
@@ -891,6 +923,12 @@
     }
     row = data;
     lastRowAt = performance.now();
+    // The row's copy of the performer's follow switch is a JOIN SNAPSHOT, not
+    // an ongoing source of truth: once ticks are flowing they carry the value
+    // live, and a row read can be older than the newest tick (the 20 s
+    // refetch can land mid-toggle). So take it only before the first tick —
+    // which is exactly the window the row exists to cover.
+    if (lastTickAt === 0) applyMasterFollow(data.follow_master_position);
     bumpDebug('applyRow', 'sub=' + (data.song_subtitle ?? '∅'));
     // expires_at past is NOT a reliable "ended" signal — it just means
     // no row WRITE has happened in ~4 hours. Two distinct cases:
@@ -947,6 +985,25 @@
       // New song, new clock: drop the viewer's play/pause choice and the
       // seek baseline, both of which only made sense for the old song.
       safePlayOverride = null;
+      // The seek state genuinely has to go, and BOTH halves of it. Fractions
+      // from two different songs aren't comparable quantities.
+      //
+      // `serverScrollFraction` is the performer's position in the song we
+      // just left. Carrying it over meant that out of play mode
+      // `targetLineFloat` kept steering the audience by the OLD song's
+      // fraction until a fresh tick happened to arrive — on a song change the
+      // page resets to the top, then travelled back down to a position that
+      // belonged to a different song. Null means "no position to point at",
+      // which is exactly right until the performer tells us otherwise.
+      //
+      // `prevSeekFraction` is the baseline the hand-scroll detector compares
+      // against. Clearing it alone was NOT enough: `noteServerPlaybackTransition`
+      // runs at the end of this block and immediately re-seeds the baseline
+      // from whatever `serverScrollFraction` still holds, so the stale value
+      // came straight back and the new song's first tick read as a huge jump,
+      // arming the reposition latch. Both, or neither.
+      serverScrollFraction = null;
+      prevSeekFraction = null;
       safeElapsed = serverElapsed;
       noteServerPlaybackTransition();
     }
@@ -1059,14 +1116,7 @@
     window.__scrollBy = (px) => { $scroll.scrollTop = $scroll.scrollTop + px; };
     window.__setScrollFraction = (f) => { serverScrollFraction = f; };
     window.__tapFollow = () => $toggleFollow?.click();
-    window.__setMasterFollow = (enabled) => {
-      const prev = masterFollowEnabled;
-      masterFollowEnabled = !!enabled;
-      if (!prev && masterFollowEnabled && trackingEnabled && !detachedDuringSong) {
-        reattachToMaster();
-      }
-      applyMasterStatus();
-    };
+    window.__setMasterFollow = (enabled) => applyMasterFollow(!!enabled);
   }
 
   // Subscribe to row-level changes (song switches, start/stop).
@@ -1097,17 +1147,7 @@
       serverInPlay  = !!p.in_play_mode;
       serverScrollFraction = (typeof p.scroll_fraction === 'number') ? p.scroll_fraction : null;
       // Master-side follow toggle. Absent ⇒ legacy iOS, default true.
-      // A false→true rising edge re-snaps tracking followers so they
-      // land cleanly on the master's current position instead of
-      // slewing across whatever drift accumulated while detached.
-      if (typeof p.follow_master_position === 'boolean') {
-        const prevMaster = masterFollowEnabled;
-        masterFollowEnabled = p.follow_master_position;
-        if (!prevMaster && masterFollowEnabled && trackingEnabled && !detachedDuringSong) {
-          reattachToMaster();
-        }
-        applyMasterStatus();
-      }
+      applyMasterFollow(p.follow_master_position);
       lastTickAt = performance.now();
       hideBanner();
       setStatus('live', 'Live');
@@ -1925,6 +1965,14 @@
       // leaving it unarmed here meant a pre-play scroll was never noticed.
       lastAppliedScrollTop = $scroll.scrollTop;
       safeScrollTop = $scroll.scrollTop;
+      // Release the reposition latch here too. Its only other release is
+      // further down this function, past this early return — so a latch armed
+      // while the performer has no position to point at (tapping Follow back
+      // on while they sit idle) could never clear. Nothing visibly broke,
+      // because a subsequent play arms `needSnap` and pre-empts it, but a
+      // latch whose release path is unreachable is a bug waiting for the one
+      // caller that doesn't get pre-empted.
+      repositioning = false;
       return;
     }
 
