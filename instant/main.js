@@ -829,11 +829,26 @@
 
   setStatus('idle', 'Connecting…');
 
+  /// Every column the audience is allowed to read. `secret` is excluded on
+  /// purpose — see the SELECT grant in Supabase/share_sessions.sql.
+  const SAFE_COLUMNS = [
+    'id', 'song_title', 'song_subtitle', 'song_raw_text', 'source_app',
+    'transpose_semitones', 'bpm', 'length_seconds', 'tempo_acceleration',
+    'is_in_play_mode', 'is_playing', 'virtual_elapsed',
+    'updated_at', 'expires_at', 'created_at',
+  ].join(',');
+
   async function loadInitial() {
     try {
       const { data, error } = await supabase
         .from('share_sessions')
-        .select('*')
+        // Explicit column list, NOT '*'. The `secret` column is the sole
+        // authorisation for update_share_session(), and anon's SELECT grant
+        // deliberately excludes it — '*' would ask for a column we're not
+        // allowed to read and PostgREST rejects the whole request with a
+        // 42501. Keep this list in sync with the grant in
+        // Supabase/share_sessions.sql.
+        .select(SAFE_COLUMNS)
         .eq('id', code)
         .maybeSingle();
       if (error) throw error;
