@@ -1,4 +1,4 @@
-// SetList audience-share — live mirror.
+// StageRoll audience-share — live mirror.
 //
 // Architecture:
 //   1. Resolve the share code from the URL path (e.g. /instant/k4m9pz).
@@ -1266,10 +1266,11 @@
   //      In practice songs don't use those words as lyrics, and a false
   //      positive only renders italic with a small gap, not destructive.
   //
-  // In lyrics-only mode, bracketed headers and the Verse/Chorus family are
+  // In lyrics-only mode, only the redundant Verse/Chorus family is
   // suppressed (the lyrics imply the structure) while keeping a visual
-  // section-gap. Bridge / Intro / Outro / etc. stay visible as italic
-  // navigational landmarks the singer/audience cues off.
+  // section-gap. Bridge / Intro / Outro / etc. AND non-keyword bracketed
+  // labels the performer wrote ("[Coach]", "[Both]", "[Slowly]") stay
+  // visible as green italic landmarks the singer/audience cues off.
   // -------------------------------------------------------------------
   const SECTION_KEYWORDS = [
     'verse', 'chorus', 'bridge', 'intro', 'outro',
@@ -1279,10 +1280,6 @@
   ];
   // Longest-first so "pre-chorus" wins over "chorus" / "pre".
   const SECTION_KEYWORDS_SORTED = [...SECTION_KEYWORDS].sort((a, b) => b.length - a.length);
-  const LYRICS_HIDDEN_KEYWORDS = new Set([
-    'verse', 'chorus', 'pre-chorus', 'pre chorus', 'prechorus',
-    'post-chorus', 'post chorus', 'postchorus',
-  ]);
 
   function splitOnSpacedDashes(s) {
     let parts = [s];
@@ -1349,20 +1346,27 @@
     const tagged = infos.findIndex(i => i.tag !== '');
     return tagged >= 0 ? parts[tagged] : parts[0];
   }
-  function isHiddenInLyricsView(normalized) {
-    const parts = splitOnSpacedDashes(normalized);
-    const candidates = parts.length === 0 ? [normalized] : parts;
-    const keywords = candidates.map(c => keywordAndTag(c).keyword);
-    if (keywords.some(k => k === '')) return false;
-    return keywords.every(k => LYRICS_HIDDEN_KEYWORDS.has(k));
+  /// Single `#`/`$` visibility prefix (NOT the wrapped `# ... #` form).
+  /// `#foo` shows only in lyrics view, `$foo` only in chords view — the
+  /// iOS-side `hashPrefixContent` / `dollarPrefixContent` markers. Returns
+  /// { mode: 'lyrics'|'chords', content } with the prefix stripped, or null.
+  function prefixVisibility(raw) {
+    const t = raw.trim();
+    if (t.length < 2) return null;
+    // `# ... #` (starts AND ends with #) is a different annotation form,
+    // handled elsewhere — not a single visibility prefix.
+    if (t.startsWith('#') && !t.endsWith('#')) return { mode: 'lyrics', content: t.slice(1).trim() };
+    if (t.startsWith('$')) return { mode: 'chords', content: t.slice(1).trim() };
+    return null;
   }
+
   /** Returns { text, hideInLyricsMode } for a recognized section header. */
   function sectionDisplayInfo(raw) {
-    const trimmed = raw.trim();
-    const isBracketed = trimmed.startsWith('[') && trimmed.endsWith(']') && trimmed.length >= 2;
-    const normalized = normalizeSectionHeader(trimmed);
-    const hideInLyricsMode = isBracketed || isHiddenInLyricsView(normalized);
-    return { text: normalized, hideInLyricsMode };
+    // Section headers render in BOTH views now — a singer reading the words
+    // still wants to see "Chorus" / "Verse 2" / "Bridge". A chords-only
+    // header ("$[Chorus]") never reaches here (the `$` prefix path handles
+    // it), so it stays out of the lyrics view. Nothing is hidden here.
+    return { text: normalizeSectionHeader(raw.trim()), hideInLyricsMode: false };
   }
 
   /// Scan the raw text for the song's "based on …" line and return its
@@ -1588,6 +1592,35 @@
       if (i === basedOnLineIndex) { i += 1; continue; }
       const cur = parsed[i];
       const next = parsed[i + 1];
+      // Render the doc's blank lines, but collapse a run of consecutive blanks
+      // to ONE and drop leading blanks (nothing above them to space from).
+      if (cur.kind === 'blank') {
+        const last = frag.lastChild;
+        const lastWasBlank = last && last.classList && last.classList.contains('blank');
+        if (!last || lastWasBlank) { i += 1; continue; }
+      }
+      // Single `#`/`$` visibility-prefix line: shown in only one mode. A
+      // bracketed/section header behind the prefix ("#[Guitar Solo]",
+      // "$[Bridge]") gets the green-italic section treatment; anything else
+      // is a plain lyric. `data-only-mode` drives the CSS that hides it in
+      // the other view. (The `# ... #` wrapped form is not handled.)
+      const prefixed = prefixVisibility(cur.raw);
+      if (prefixed) {
+        const div = document.createElement('div');
+        div.dataset.rawLineStart = String(i);
+        div.dataset.rawLineEnd = String(i);
+        div.dataset.onlyMode = prefixed.mode;
+        if (isSectionHeader(prefixed.content)) {
+          div.className = 'line section';
+          div.textContent = normalizeSectionHeader(prefixed.content.trim()) || ' ';
+        } else {
+          div.className = 'line lyric';
+          div.textContent = prefixed.content || ' ';
+        }
+        frag.appendChild(div);
+        i += 1;
+        continue;
+      }
       // Pair a chord line with the lyric line immediately under it.
       if (cur.kind === 'chords' && next && next.kind === 'lyrics') {
         const pair = renderChordLyricPair(cur.raw, next.raw);
@@ -1601,12 +1634,9 @@
         div.dataset.rawLineStart = String(i);
         div.dataset.rawLineEnd = String(i);
         if (cur.kind === 'section') {
-          const info = sectionDisplayInfo(cur.raw);
-          div.textContent = info.text || ' ';
-          // Drives the CSS rule that collapses the label into a blank-line
-          // gap in lyrics-only mode. Bridge / Intro / Outro / Instrumental
-          // etc. don't get the flag and stay visible.
-          if (info.hideInLyricsMode) div.dataset.sectionHiddenInLyrics = 'true';
+          // Section headers show in both views (green italic). Chords-only
+          // headers arrive as `$[…]` and are handled by the prefix path above.
+          div.textContent = sectionDisplayInfo(cur.raw).text || ' ';
         } else if (cur.kind === 'chords') {
           div.textContent = transposeChordLineString(cur.raw, currentTranspose);
         } else {

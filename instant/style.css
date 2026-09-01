@@ -158,7 +158,10 @@ button#toggle-play { min-width: 3.4rem; }
   letter-spacing: 0;
 }
 .line.section {
-  color: #999;
+  /* Green italic, matching the iOS player's section-header colour (which is
+   * a dark green on the app's light chart); lightened here for legibility on
+   * this dark share background. Applies in both chords and lyrics-only view. */
+  color: #4fb96e;
   font-style: italic;
   margin-top: 0.6em;
   margin-bottom: 0.1em;
@@ -169,18 +172,16 @@ button#toggle-play { min-width: 3.4rem; }
  * chord row inside a chord-pair block. */
 .song-body[data-show-chords="false"] .line.chords { display: none; }
 
-/* In lyrics-only mode, suppress section labels that the iOS player also
- * suppresses (bracketed [...] and Verse/Chorus-family keywords) but keep
- * their vertical space so verse/chorus separation stays visually obvious.
- * The data-section-hidden-in-lyrics attribute is set by main.js when the
- * iOS rule says the label should disappear. Bridge / Intro / Outro /
- * Instrumental / etc. don't get the flag and stay visible as before. */
-.song-body[data-show-chords="false"] .line.section[data-section-hidden-in-lyrics="true"] {
-  visibility: hidden;
-  font-style: normal;
-  font-size: 1em;
-  margin: 0;
-}
+/* Single `#`/`$` visibility-prefix lines are shown in only one mode.
+ * `#foo`  (data-only-mode="lyrics") — hidden in chords view.
+ * `$foo`  (data-only-mode="chords") — hidden in lyrics-only view.
+ * Applies to both plain-lyric and green-italic section variants. */
+.song-body[data-show-chords="true"]  .line[data-only-mode="lyrics"] { display: none; }
+.song-body[data-show-chords="false"] .line[data-only-mode="chords"] { display: none; }
+
+/* Section headers (green italic) now render in BOTH views — nothing is
+ * hidden by mode. A chords-only header ("$[Chorus]") is carried as a
+ * data-only-mode="chords" line above, so it's still hidden in lyrics view. */
 
 /* Chord-over-syllable rendering.
  *
