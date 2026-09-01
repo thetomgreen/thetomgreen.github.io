@@ -1595,9 +1595,10 @@
       // Render the doc's blank lines, but collapse a run of consecutive blanks
       // to ONE and drop leading blanks (nothing above them to space from).
       if (cur.kind === 'blank') {
-        const last = frag.lastChild;
-        const lastWasBlank = last && last.classList && last.classList.contains('blank');
-        if (!last || lastWasBlank) { i += 1; continue; }
+        // Render each blank line faithfully; only drop LEADING blanks (nothing
+        // above them to space from). Blank-run sizing is normalized at import
+        // (ceil(b/2)); the audience page just mirrors the stored song.
+        if (!frag.lastChild) { i += 1; continue; }
       }
       // Single `#`/`$` visibility-prefix line: shown in only one mode. A
       // bracketed/section header behind the prefix ("#[Guitar Solo]",
