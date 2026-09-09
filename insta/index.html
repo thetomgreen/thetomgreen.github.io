@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Follow The Love Drops on the Insta</title>
+  <link rel="icon" type="image/jpeg" href="../logo.jpeg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,600;0,800;1,600;1,800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --pink: #d6395e;
+      --pink-soft: #f5a8bd;
+      --on-surface: #e6e9f5;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      background: #000;
+      color: var(--on-surface);
+      font-family: 'Newsreader', Georgia, 'Times New Roman', serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3vmin 4vmin;
+      overflow: hidden;
+    }
+
+    /* soft pink bloom behind everything */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(60vmax 45vmax at 22% 50%, rgba(214, 57, 94, 0.20), transparent 65%),
+        radial-gradient(50vmax 40vmax at 82% 55%, rgba(245, 168, 189, 0.08), transparent 70%);
+      pointer-events: none;
+    }
+
+    .stage {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6vmin;
+      width: 100%;
+      max-width: 1600px;
+    }
+
+    .logo {
+      width: min(46vh, 40vw);
+      height: auto;
+      flex: 0 0 auto;
+      filter: drop-shadow(0 0 3vmin rgba(214, 57, 94, 0.45));
+    }
+
+    .panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 3.2vmin;
+    }
+
+    h1 {
+      margin: 0;
+      font-weight: 800;
+      font-size: clamp(1.6rem, 5.4vh, 3.7rem);
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      max-width: 12em;
+      background: linear-gradient(175deg, #ffffff 0%, #e6e9f5 45%, #b9c2ce 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: 0 0 5vmin rgba(255, 255, 255, 0.12);
+    }
+
+    h1 .drops {
+      display: block;
+      font-style: italic;
+      background: linear-gradient(175deg, var(--pink-soft) 0%, var(--pink) 60%, #7a1731 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .qr-card {
+      display: block;
+      background: #fff;
+      padding: 1.6vmin;
+      border-radius: 1.6vmin;
+      line-height: 0;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 1.5vmin 4vmin rgba(214, 57, 94, 0.38);
+      transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+
+    .qr-card:hover,
+    .qr-card:focus-visible {
+      transform: translateY(-0.5vmin);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45), 0 2vmin 5vmin rgba(214, 57, 94, 0.55);
+      outline: none;
+    }
+
+    .qr-card img {
+      display: block;
+      width: min(34vh, 26vw);
+      height: auto;
+    }
+
+    .handle {
+      margin: 0;
+      font-size: clamp(0.85rem, 2.4vh, 1.35rem);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(230, 233, 245, 0.72);
+      text-decoration: none;
+    }
+
+    .handle:hover { color: #fff; }
+
+    /* Portrait / narrow fallback — stack it */
+    @media (max-aspect-ratio: 1/1) {
+      .stage {
+        flex-direction: column;
+        gap: 4vmin;
+      }
+      .logo { width: min(42vw, 34vh); }
+      .qr-card img { width: min(46vw, 30vh); }
+      h1 { font-size: clamp(1.4rem, 6vw, 2.6rem); }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <img class="logo" src="logo-glitter.png" alt="The Love Drops" />
+
+    <div class="panel">
+      <h1>Follow the <span class="drops">Love Drops</span> on the Insta</h1>
+
+      <a class="qr-card"
+         href="https://www.instagram.com/thirdeyeroll"
+         target="_blank" rel="noopener">
+        <img src="insta-qr.png" alt="QR code linking to The Love Drops on Instagram" />
+      </a>
+
+      <a class="handle"
+         href="https://www.instagram.com/thirdeyeroll"
+         target="_blank" rel="noopener">@thirdeyeroll</a>
+    </div>
+  </div>
+</body>
+</html>
