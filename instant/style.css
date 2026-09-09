@@ -83,7 +83,8 @@ body {
 
 /* Controls — both the in-title-wrap toggle and the right-side group */
 .controls, .title-wrap { /* shared button styles */ }
-button#toggle-chords, button#toggle-follow, button#toggle-play, .controls button {
+button#toggle-chords, button#toggle-follow, button#toggle-play,
+button#toggle-capo, .controls button {
   font: inherit;
   font-size: 0.75rem;
   background: #1f1f1f;
@@ -104,7 +105,8 @@ button#toggle-chords, button#toggle-follow, button#toggle-play, .controls button
  * and shrank by ~38px every time Follow was tapped, shoving the song down
  * and back. Two rows in both follow states is the requirement. */
 @media (max-width: 430px) {
-  button#toggle-chords, button#toggle-follow, button#toggle-play, .controls button {
+  button#toggle-chords, button#toggle-follow, button#toggle-play,
+  button#toggle-capo, .controls button {
     padding: 3px 5px;
     font-size: 0.7rem;
   }
@@ -114,7 +116,12 @@ button#toggle-follow:hover, button#toggle-follow:focus-visible,
 .controls button:hover, .controls button:focus-visible {
   background: #2a2a2a; outline: none;
 }
-button#toggle-chords[aria-pressed="true"] { background: #2c5fff; border-color: #2c5fff; }
+button#toggle-chords[aria-pressed="true"],
+button#toggle-capo[aria-pressed="true"] { background: #2c5fff; border-color: #2c5fff; }
+/* Hidden when chords are off or the song has no capo — an inert control is
+ * worse than no control. Lives in `.controls`, outside the wrapping title
+ * row, so appearing and disappearing can't change the bar's height. */
+button#toggle-capo.hidden { display: none; }
 /* Follow is the inverse of a normal toggle: it is BLUE when the viewer is
  * released, because that is when tapping it does something. While following
  * it is disabled and grey — you are already following, and the way out is to

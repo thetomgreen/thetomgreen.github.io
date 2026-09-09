@@ -165,6 +165,7 @@
   const $banner   = document.getElementById('banner');
   const $toggle   = document.getElementById('toggle-chords');
   const $followState = document.getElementById('follow-state');
+  const $toggleCapo  = document.getElementById('toggle-capo');
   const $zoomIn   = document.getElementById('zoom-in');
   const $zoomOut  = document.getElementById('zoom-out');
   const $showQR   = document.getElementById('show-qr');
@@ -182,6 +183,28 @@
   /// default; once a viewer taps the toggle their choice persists for this
   /// browser, so a returning viewer keeps whatever they last chose.
   let showChords = localStorage.getItem(lsKey('showChords')) === 'true';
+  /// "I am playing along WITH a capo." Defaults OFF: a viewer who has one is
+  /// making a deliberate choice, and someone without one who plays the chords
+  /// as written on a capo song would be in the wrong key with no clue why.
+  /// Persisted per browser, like the chords toggle.
+  let viewerHasCapo = localStorage.getItem(lsKey('viewerHasCapo')) === 'true';
+  // Declared HERE, not down with the other song state, because
+  // `applyChordsToggle()` runs during init a few lines below and reads
+  // `songCapo` through `applyCapoToggle()`. A `let` further down the file is
+  // in its temporal dead zone at that point, which throws before
+  // `window.__applyRow` is ever defined — the whole page dies silently.
+  /// The performer's own transpose, straight off the row. `currentTranspose`
+  /// is this plus the viewer's capo adjustment.
+  let masterTranspose = 0;
+  /// The fret the chart is written for, and whether the performer's published
+  /// transpose ALREADY shifted up by it (they have no capo, so what they see
+  /// is sounding pitch rather than fretted shapes).
+  let songCapo = 0;
+  let capoCompensated = false;
+  /// What the song was last rendered from, so a capo toggle can re-render
+  /// without waiting for the performer to send anything.
+  let renderedSongTitle = '';
+  let renderedBasedOnText = '';
   applyZoom();
   applyChordsToggle();
 
@@ -693,9 +716,24 @@
       }
       prevSeekFraction = serverScrollFraction;
     }
-    if (playingRose && effectivelyFollowing()) {
-      needSnap = true;
-      fastCatchUp = false;
+    if (playingRose) {
+      // The performer starting the song is a RE-ATTACH, not just a cue to
+      // snap. Treat it exactly like a fresh song beginning: a viewer who had
+      // scrolled away to read ahead is brought back, a viewer who had paused
+      // their own creep is un-paused, and the page travels to wherever the
+      // performer is. Before this, only an already-following viewer got a
+      // snap, so anyone who had glanced ahead earlier in the song stayed
+      // detached through the performer hitting play and had to notice and
+      // tap Follow themselves.
+      //
+      // An EXPLICIT Follow-off is the one thing this does not override —
+      // same rule a song change follows. That viewer asked to read at their
+      // own pace and has not changed their mind.
+      if (trackingEnabled && masterFollowEnabled) {
+        reattachToMaster();
+      } else {
+        fastCatchUp = false;
+      }
     }
     if (inPlayFell) {
       // Master left play mode. Release the catch-up latch, but do NOT
@@ -791,6 +829,42 @@
   }
 
   function applyZoom()        { document.documentElement.style.setProperty('--font-size', zoom + 'px'); }
+  /// The capo control only means anything when chords are on screen AND the
+  /// song actually has a capo, so it is hidden otherwise rather than sitting
+  /// there inert. It lives in the zoom/QR group, which is outside the wrapping
+  /// title row, so showing it cannot change the bar's height.
+  function applyCapoToggle() {
+    if (!$toggleCapo) return;
+    const useful = showChords && songCapo !== 0 && $body.dataset.mode !== 'list';
+    $toggleCapo.classList.toggle('hidden', !useful);
+    $toggleCapo.setAttribute('aria-pressed', viewerHasCapo ? 'true' : 'false');
+    $toggleCapo.title = viewerHasCapo
+      ? `Playing with a capo on fret ${songCapo} — tap if you have no capo`
+      : `Playing without a capo — tap if you have one on fret ${songCapo}`;
+    $toggleCapo.setAttribute('aria-label', $toggleCapo.title);
+  }
+
+  /// Re-render the current song in a new key without waiting for the
+  /// performer. Same shape as the transpose-only path in `applyRow`: keep the
+  /// viewer where they are, and rebuild the anchors the tracker maps through.
+  function rerenderForTranspose() {
+    const next = masterTranspose + capoShift();
+    if (next === currentTranspose) return;
+    currentTranspose = next;
+    if ($body.dataset.mode === 'list' || renderedSongRawText === null) return;
+    renderSong(renderedSongRawText || '', renderedSongTitle, renderedBasedOnText);
+    rebuildLineAnchors();
+  }
+
+  if ($toggleCapo) {
+    $toggleCapo.addEventListener('click', () => {
+      viewerHasCapo = !viewerHasCapo;
+      localStorage.setItem(lsKey('viewerHasCapo'), String(viewerHasCapo));
+      applyCapoToggle();
+      rerenderForTranspose();
+    });
+  }
+
   function applyChordsToggle() {
     $body.dataset.showChords = showChords ? 'true' : 'false';
     $toggle.setAttribute('aria-pressed', showChords ? 'true' : 'false');
@@ -799,6 +873,7 @@
     $toggle.textContent = showChords ? 'Hide chords' : 'Show chords';
     $toggle.title = showChords ? 'Show the lyrics on their own'
                                : 'Show the chords above the lyrics';
+    applyCapoToggle();
   }
   function clamp(n, lo, hi)   { return Math.max(lo, Math.min(hi, n)); }
 
@@ -819,6 +894,24 @@
   /** @type {{ id: string, song_title: string|null, song_raw_text: string|null, length_seconds: number, tempo_acceleration: number, expires_at: string } | null} */
   let row = null;
   let currentTranspose = 0;            // semitone shift applied to chords
+
+  /// Semitones to add to the performer's transpose so the chords suit THIS
+  /// viewer's capo situation.
+  ///
+  ///   performer capo'd (not compensated), viewer capo on   →  0  (same shapes)
+  ///   performer capo'd,                   viewer capo off  → +capo (sound it)
+  ///   performer not capo'd (compensated), viewer capo off  →  0  (same shapes)
+  ///   performer not capo'd,               viewer capo on   → −capo (fret it)
+  ///
+  /// i.e. "what I want" minus "what was sent": a viewer without a capo wants
+  /// the chart at sounding pitch (+capo from written), one with a capo wants
+  /// the written shapes.
+  function capoShift() {
+    if (!songCapo) return 0;
+    const want = viewerHasCapo ? 0 : songCapo;
+    const have = capoCompensated ? songCapo : 0;
+    return want - have;
+  }
   let serverElapsed = 0;
   let serverPlaying = false;
   let serverInPlay = false;
@@ -891,6 +984,7 @@
     'transpose_semitones', 'bpm', 'length_seconds', 'tempo_acceleration',
     'is_in_play_mode', 'is_playing', 'virtual_elapsed',
     'follow_master_position',
+    'song_capo', 'capo_compensated',
     'updated_at', 'expires_at', 'created_at',
   ].join(',');
 
@@ -976,9 +1070,16 @@
     $title.textContent = data.song_title || ' ';
 
     const isList = (data.song_subtitle === LIST_SENTINEL);
-    const newTranspose = data.transpose_semitones || 0;
+    masterTranspose = data.transpose_semitones || 0;
+    // A sender from before these columns existed sends neither; 0/false is
+    // the correct reading of "no capo information", and `capoShift()` is
+    // then always 0, so such a session behaves exactly as it did before.
+    songCapo = data.song_capo || 0;
+    capoCompensated = !!data.capo_compensated;
+    const newTranspose = masterTranspose + capoShift();
     const transposeChanged = newTranspose !== currentTranspose;
     currentTranspose = newTranspose;
+    applyCapoToggle();
     const contentChanged = (data.song_raw_text !== renderedSongRawText) ||
                            (isList !== ($body.dataset.mode === 'list'));
 
@@ -1046,7 +1147,9 @@
       } else {
         const basedOn = extractBasedOn(data.song_raw_text || '');
         basedOnLineIndex = basedOn.index;
-        renderSong(data.song_raw_text || '', data.song_title || '', basedOn.text);
+        renderedSongTitle = data.song_title || '';
+        renderedBasedOnText = basedOn.text;
+        renderSong(data.song_raw_text || '', renderedSongTitle, renderedBasedOnText);
         $body.dataset.mode = 'song';
         updateSubtitle(basedOn.text);
       }
@@ -1140,6 +1243,15 @@
     window.__scrollBy = (px) => { $scroll.scrollTop = $scroll.scrollTop + px; };
     window.__setScrollFraction = (f) => { serverScrollFraction = f; };
     window.__tapFollow = () => $toggleFollow?.click();
+    window.__tapCapo = () => $toggleCapo?.click();
+    window.__tapChords = () => $toggle?.click();
+    window.__getCapo = () => ({
+      viewerHasCapo, songCapo, capoCompensated,
+      masterTranspose, currentTranspose,
+      shift: capoShift(),
+      buttonVisible: !!($toggleCapo && !$toggleCapo.classList.contains('hidden')),
+      chordText: (document.querySelector('.line.chords') || {}).textContent || '',
+    });
     window.__setMasterFollow = (enabled) => applyMasterFollow(!!enabled);
   }
 
