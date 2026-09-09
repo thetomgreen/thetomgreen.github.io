@@ -840,6 +840,10 @@
     const useful = showChords && songCapo !== 0 && $body.dataset.mode !== 'list';
     $toggleCapo.classList.toggle('hidden', !useful);
     $toggleCapo.setAttribute('aria-pressed', viewerHasCapo ? 'true' : 'false');
+    // The LABEL carries the state, not just the highlight: a lit pill reads
+    // as "on" only if you already know what it toggles. "Capo 2" vs
+    // "No capo" says which of the two you are looking at from across a room.
+    $toggleCapo.textContent = viewerHasCapo ? `Capo ${songCapo}` : 'No capo';
     $toggleCapo.title = viewerHasCapo
       ? `Playing with a capo on fret ${songCapo} — tap if you have no capo`
       : `Playing without a capo — tap if you have one on fret ${songCapo}`;
@@ -1615,7 +1619,11 @@
     }
     const chords = tokens.filter(t => t.isChord).length;
     const extras = tokens.length - chords;
-    return (chords > 0 && chords >= extras) ? 'chords' : 'lyrics';
+    // STRICT majority, matching `ChordParser` on the device. A tie is a
+    // lyric: "Key: G" is one chord token against one word, and reading it as
+    // a chord line both painted it blue and TRANSPOSED it, so a capo song's
+    // metadata announced the wrong key.
+    return (chords > 0 && chords > extras) ? 'chords' : 'lyrics';
   }
 
   /** Tokenise a chord line into [{col, text}] preserving column positions.
@@ -1783,7 +1791,7 @@
     const rawLines = rawText.split('\n');
     const parsed = rawLines.map(raw => ({ raw, kind: classify(raw) }));
     const frag = document.createDocumentFragment();
-    if (title || basedOnText) {
+    if (title || basedOnText || songCapo) {
       const head = document.createElement('div');
       head.className = 'song-head';
       if (title) {
@@ -1797,6 +1805,16 @@
         b.className = 'song-head-based';
         b.textContent = basedOnText;
         head.appendChild(b);
+      }
+      // The fret the chart is written for. Chart furniture, so it rides with
+      // the chords and is hidden with them — someone reading the words has no
+      // use for it. This is the SONG's capo, fixed; the button in the bar is
+      // the viewer's own, and toggles.
+      if (songCapo) {
+        const c = document.createElement('div');
+        c.className = 'song-head-capo';
+        c.textContent = `Capo ${songCapo}`;
+        head.appendChild(c);
       }
       frag.appendChild(head);
     }
@@ -1854,7 +1872,9 @@
         }
         if (annotation !== '') {
           const div = document.createElement('div');
-          div.className = 'line annotation';
+          // Styled as a section break: it is the same kind of thing, a
+          // direction rather than a line to sing. Matches the iOS player.
+          div.className = 'line section';
           div.dataset.rawLineStart = String(i);
           div.dataset.rawLineEnd = String(i);
           div.dataset.onlyMode = 'lyrics';

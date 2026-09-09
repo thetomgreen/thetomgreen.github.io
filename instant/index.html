@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0a0a0a">
   <title>Love Drops — live</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='70' font-size='80' text-anchor='middle'%3E♫%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=36">
+  <link rel="stylesheet" href="style.css?v=37">
 </head>
 <body>
   <header class="topbar">
@@ -31,6 +31,13 @@
            the performer's transport is in charge then. -->
       <button id="toggle-play" type="button" class="hidden" aria-pressed="true" title="Pause the scroll">Pause</button>
       <button id="toggle-chords" type="button" aria-pressed="false">Show chords</button>
+      <!-- Explicit flex line break, active only on the narrow layout. Without
+           it the bar was bistable: `.title-text` grows into whatever room is
+           left on row one, which could leave the zoom/QR group nowhere to go
+           but a row of its own — so the same width rendered one way or two
+           depending on which layout pass won. This pins it: title and
+           transport on row one, follow-state and controls on row two. -->
+      <span class="bar-break" aria-hidden="true"></span>
       <!-- The zoom / QR / capo group. It sits INSIDE `.title-wrap` (which is
            the bar's only flex child) so that on a phone it can share the
            second row with the follow-state sentence instead of claiming a
@@ -94,6 +101,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <!-- QR code generator (lazy-loaded on demand by main.js so it doesn't
        cost first-paint for the 99% of viewers who never tap "QR"). -->
-  <script src="main.js?v=36"></script>
+  <script src="main.js?v=37"></script>
 </body>
 </html>
