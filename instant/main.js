@@ -157,7 +157,6 @@
   // DOM refs + per-viewer state
   // -------------------------------------------------------------------
   const $title    = document.getElementById('song-title');
-  const $subtitle = document.getElementById('song-subtitle');
   const $body     = document.getElementById('song-body');
   const $empty    = document.getElementById('empty-state');
   const $scroll   = document.getElementById('scroll-area');
@@ -411,6 +410,9 @@
     showChords = !showChords;
     localStorage.setItem(lsKey('showChords'), String(showChords));
     applyChordsToggle();
+    // Our own re-layout, not the viewer's — don't let it read as a scroll
+    // and release the follow.
+    reflowAfterRenderChange();
   });
 
   // Follow-master toggle. When ON, the page chases the master's
@@ -853,7 +855,7 @@
     currentTranspose = next;
     if ($body.dataset.mode === 'list' || renderedSongRawText === null) return;
     renderSong(renderedSongRawText || '', renderedSongTitle, renderedBasedOnText);
-    rebuildLineAnchors();
+    reflowAfterRenderChange();
   }
 
   if ($toggleCapo) {
@@ -863,6 +865,28 @@
       applyCapoToggle();
       rerenderForTranspose();
     });
+  }
+
+  /// Re-measure and re-place the page after WE changed what is rendered
+  /// (chords shown/hidden, a capo re-transpose) rather than the viewer
+  /// scrolling.
+  ///
+  /// Two things have to happen or the toggle silently drops the viewer out
+  /// of follow. Showing the chords roughly doubles the height of every
+  /// paired line, so (a) the line→pixel anchors are stale the instant the
+  /// class flips, and (b) the browser's own scrollTop moves under us — which
+  /// the loop's "did a human move the page?" delta check reads as a manual
+  /// scroll and detaches on. So: rebuild the anchors, re-derive the pixel
+  /// offset for the line the viewer is ALREADY on (their place in the song
+  /// is what should survive a re-render, not their pixel offset), then
+  /// re-baseline both scroll trackers to what we just wrote.
+  function reflowAfterRenderChange() {
+    rebuildLineAnchors();
+    if (lineAnchors.length > 0) {
+      $scroll.scrollTop = lineFloatToScrollTop(displayedLineFloat);
+    }
+    lastAppliedScrollTop = $scroll.scrollTop;
+    safeScrollTop = $scroll.scrollTop;
   }
 
   function applyChordsToggle() {
@@ -1140,7 +1164,6 @@
       if (isList) {
         renderList(data.song_raw_text || '');
         $body.dataset.mode = 'list';
-        updateSubtitle('');
         // Lists are static — show them from the top, not wherever the
         // previous song's scrollTop happened to leave us.
         $scroll.scrollTop = 0;
@@ -1151,7 +1174,6 @@
         renderedBasedOnText = basedOn.text;
         renderSong(data.song_raw_text || '', renderedSongTitle, renderedBasedOnText);
         $body.dataset.mode = 'song';
-        updateSubtitle(basedOn.text);
       }
       renderedSongRawText = data.song_raw_text || '';
       // Re-measure DOM line positions before deciding scroll position.
@@ -1201,10 +1223,11 @@
   if (debugEnabled) {
     window.__applyRow = applyRow;
     window.__getScrollTop = () => $scroll.scrollTop;
-    window.__getSubtitle = () => ({
-      hidden: $subtitle?.classList.contains('hidden'),
-      text: $subtitle?.textContent,
-    });
+    // The "based on …" credit now lives ONLY in the scrolling head block.
+    window.__getSubtitle = () => {
+      const el = $body.querySelector('.song-head-based');
+      return { hidden: !el, text: el ? el.textContent : '' };
+    };
     window.__setServerTick = (elapsed, playing = true, inPlay = true) => {
       serverElapsed = elapsed;
       serverPlaying = !!playing;
@@ -1496,6 +1519,42 @@
     return null;
   }
 
+  /// Wrapped `# … #` annotation — the source-doc convention's "this belongs
+  /// to the LYRICS version only" block (a performance note, a spoken aside,
+  /// a scroll-spacing placeholder). Port of iOS
+  /// `SongTextHeuristics.hashAnnotationContent`: returns the inner text with
+  /// the `#` markers stripped and any `<n lines>` scroll-spacing directive
+  /// removed, or null when the line isn't wrapped.
+  function hashAnnotationContent(raw) {
+    const t = raw.trim();
+    if (t.length < 2 || !t.startsWith('#') || !t.endsWith('#')) return null;
+    let inner = t.slice(1, -1).trim();
+    inner = inner.replace(/\s*<\s*\d+\s*lines?\s*>/i, '').trim();
+    return inner;
+  }
+
+  /// Small metadata lines ("Key: G", "Capo 2", "Based on: …"). Port of
+  /// `SectionMarkerRules.isMetadataLine` minus the section-header clause,
+  /// which `classify` already handles as its own kind. Shown in the chords
+  /// view (the performer's chart carries them) and suppressed in lyrics-only.
+  const METADATA_PREFIXES = [
+    'key:', 'tempo:', 'capo:', 'bpm:', 'time:', 'tuning:',
+    'by:', 'artist:', 'title:',
+    // Deliberately NOT the bare "by " form — it eats any lyric starting
+    // "By …". See the note in SectionMarkerRules.swift.
+    'based on:', 'based on ', 'based upon:', 'based upon ',
+  ];
+  function isMetadataLine(raw) {
+    const lower = raw.trim().toLowerCase();
+    if (lower === '') return false;
+    if (METADATA_PREFIXES.some(p => lower.startsWith(p))) return true;
+    // "Capo 2" — keyword plus a small remainder, no colon.
+    for (const kw of ['capo', 'key', 'tempo', 'bpm']) {
+      if (lower.startsWith(kw + ' ') && lower.slice(kw.length + 1).length <= 6) return true;
+    }
+    return false;
+  }
+
   /** Returns { text, hideInLyricsMode } for a recognized section header. */
   function sectionDisplayInfo(raw) {
     // Section headers render in BOTH views now — a singer reading the words
@@ -1525,17 +1584,6 @@
       return { text: '', index: -1 };
     }
     return { text: '', index: -1 };
-  }
-
-  function updateSubtitle(text) {
-    if (!$subtitle) return;
-    if (text) {
-      $subtitle.textContent = text;
-      $subtitle.classList.remove('hidden');
-    } else {
-      $subtitle.textContent = '';
-      $subtitle.classList.add('hidden');
-    }
   }
 
   /** Returns 'chords' | 'lyrics' | 'blank' | 'section'. */
@@ -1791,8 +1839,37 @@
         i += 1;
         continue;
       }
-      // Pair a chord line with the lyric line immediately under it.
-      if (cur.kind === 'chords' && next && next.kind === 'lyrics') {
+      // Wrapped `# … #`: a lyrics-version-only performance note, spoken
+      // aside, or scroll-spacing placeholder. Shown italic in the lyrics
+      // view with the `#` markers stripped, and dropped in the chords view
+      // — along with the chord line directly above it, which belongs to the
+      // block being annotated (the source-doc rule the iOS player follows).
+      const annotation = hashAnnotationContent(cur.raw);
+      if (annotation !== null) {
+        const prev = frag.lastElementChild;
+        if (prev && prev.classList.contains('chords')) {
+          // Standalone chord line only — a chord PAIRED with a lyric stays,
+          // because its lyric is still being sung.
+          prev.dataset.onlyMode = 'lyrics';
+        }
+        if (annotation !== '') {
+          const div = document.createElement('div');
+          div.className = 'line annotation';
+          div.dataset.rawLineStart = String(i);
+          div.dataset.rawLineEnd = String(i);
+          div.dataset.onlyMode = 'lyrics';
+          div.textContent = annotation;
+          frag.appendChild(div);
+        }
+        i += 1;
+        continue;
+      }
+      // Pair a chord line with the lyric line immediately under it — but
+      // never with a `# … #` annotation. Those are directions, not words to
+      // hang chords over, and pairing consumed the annotation here before
+      // the branch above could hide it.
+      if (cur.kind === 'chords' && next && next.kind === 'lyrics'
+          && hashAnnotationContent(next.raw) === null) {
         const pair = renderChordLyricPair(cur.raw, next.raw);
         pair.dataset.rawLineStart = String(i);
         pair.dataset.rawLineEnd = String(i + 1);
@@ -1811,6 +1888,12 @@
           div.textContent = transposeChordLineString(cur.raw, currentTranspose);
         } else {
           div.textContent = cur.kind === 'blank' ? ' ' : cur.raw;
+          // "Key: G", "Capo 2", "Tuning: DADGAD" -- chart furniture for the
+          // player, noise for someone reading the words. Chords view only,
+          // same as the iOS player.
+          if (cur.kind === 'lyrics' && isMetadataLine(cur.raw)) {
+            div.dataset.onlyMode = 'chords';
+          }
         }
         frag.appendChild(div);
         i += 1;
@@ -1876,6 +1959,11 @@
     const elems = $body.querySelectorAll('[data-raw-line-start]');
     if (elems.length === 0) return;
     elems.forEach(el => {
+      // A line hidden in the current view (`data-only-mode`) measures as
+      // top 0 / height 0, which would plant a bogus anchor at the very top
+      // of the song. Skip it and let the gap-fill below hand it the
+      // preceding visible line's anchor instead.
+      if (el.offsetParent === null && el.offsetHeight === 0) return;
       const start = parseInt(el.dataset.rawLineStart, 10);
       const endL  = parseInt(el.dataset.rawLineEnd, 10);
       const top = el.offsetTop;

@@ -32,7 +32,7 @@ body {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1 1 auto;              /* shrink so long titles ellipsize, not overflow */
+  flex: 1 1 100%;              /* the bar's only child — take the whole width */
   flex-wrap: wrap;             /* lets the follow-state drop to its own row */
 }
 .title-text {
@@ -58,19 +58,6 @@ body {
   text-overflow: ellipsis;
   min-width: 0;
 }
-.song-subtitle {
-  margin: 0;
-  font-size: 0.78rem;
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: 0.01em;
-  color: #8a8a8e;              /* matches the iOS app's .secondary tone */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.song-subtitle.hidden { display: none; }
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: #444;
@@ -119,9 +106,11 @@ button#toggle-follow:hover, button#toggle-follow:focus-visible,
 button#toggle-chords[aria-pressed="true"],
 button#toggle-capo[aria-pressed="true"] { background: #2c5fff; border-color: #2c5fff; }
 /* Hidden when chords are off or the song has no capo — an inert control is
- * worse than no control. Lives in `.controls`, outside the wrapping title
- * row, so appearing and disappearing can't change the bar's height. */
-button#toggle-capo.hidden { display: none; }
+ * worse than no control. It RESERVES its space rather than collapsing, the
+ * same rule the Play button follows: collapsing it changed the bar's width,
+ * which changed whether the bar wrapped, which changed its height by a whole
+ * row every time the chords were toggled — shoving the song down and back. */
+button#toggle-capo.hidden { visibility: hidden; }
 /* Follow is the inverse of a normal toggle: it is BLUE when the viewer is
  * released, because that is when tapping it does something. While following
  * it is disabled and grey — you are already following, and the way out is to
@@ -140,7 +129,10 @@ button#toggle-follow[aria-pressed="true"]:hover { background: #242424; }
 .follow-state {
   font-size: 0.7rem;
   letter-spacing: 0.01em;
-  color: #8a8a8e;
+  /* Lyric white. Only the BUTTON greys out while following — the sentence
+   * beside it is the instruction for how to leave, so it has to be as
+   * readable as anything else on the page. */
+  color: #f5f5f5;
   white-space: nowrap;
   flex: 0 0 auto;
 }
@@ -153,16 +145,25 @@ button#toggle-follow[aria-pressed="true"]:hover { background: #242424; }
  * order so the BUTTONS stay on row one with the title; `flex-basis: 100%`
  * is what forces the wrap. The bar gets taller, which is why its height is
  * measured into `--topbar-h` rather than hard-coded. */
-/* Inline beside the Follow button needs roughly 550px: title floor + the
- * sentence + three buttons + the zoom/QR group. Below that it takes its own
- * row rather than truncating anything. */
-@media (max-width: 600px) {
+/* Inline beside the Follow button needs the title floor + the sentence +
+ * three buttons + the zoom/QR group on one line. Below that it moves to a
+ * second row rather than truncating anything. The threshold is set where a
+ * bar carrying the CAPO button too still fits on one line — pick it any
+ * lower and turning the chords on (which reveals capo) tips the bar from
+ * one row to two, which shoves the song down and back. */
+@media (max-width: 700px) {
+  /* Row 1 is the title and the transport buttons; row 2 is this sentence
+   * SHARING with the zoom/QR group. It used to claim a full-width row of
+   * its own (`flex: 1 0 100%`), which left the controls to wrap onto a
+   * THIRD row — 100px of top bar on a phone, all of it stolen from the
+   * song. `flex: 0 1 auto` lets the two sit side by side. */
   .follow-state {
     order: 99;
-    flex: 1 0 100%;
+    flex: 0 1 auto;
     font-size: 0.68rem;
     padding-top: 2px;
   }
+  .controls { order: 100; }
 }
 /* The Follow button is removed entirely (not just dimmed) when the
  * performer turns off "Followers track my position" — tapping it could
@@ -179,7 +180,14 @@ button#toggle-play.hidden { visibility: hidden; }
  * and letting it resize shoved Chords/QR/A-/A+ sideways ~10px on every
  * tap. */
 button#toggle-play { min-width: 3.4rem; }
-.controls { display: flex; gap: 4px; flex-shrink: 0; }
+.controls {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  /* `.title-wrap` is the bar's only flex child now, so this group pins
+   * itself to the right-hand edge from inside it. */
+  margin-left: auto;
+}
 
 /* Scroll area */
 .scroll-area {
@@ -235,7 +243,9 @@ button#toggle-play { min-width: 3.4rem; }
   font-size: 1em;
   font-style: italic;
   line-height: 1.35;
-  color: #8a8a8e;
+  /* Lyric white, not a dimmer grey: this is now the ONLY copy of the credit
+   * (the top bar's duplicate is gone) and it is read at song distance. */
+  color: #f5f5f5;
   margin-top: 0.15em;
   overflow-wrap: anywhere;
 }
@@ -251,6 +261,14 @@ button#toggle-play { min-width: 3.4rem; }
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-weight: 600;
   letter-spacing: 0;
+}
+/* Wrapped `# … #` blocks: lyrics-version performance notes and spoken
+ * asides. Italic, slightly dimmer than a sung lyric so the reader can tell
+ * at a glance that these are directions rather than words to sing. Hidden
+ * in the chords view via data-only-mode="lyrics". */
+.line.annotation {
+  color: #cfcfd4;
+  font-style: italic;
 }
 .line.section {
   /* Green italic, matching the iOS player's section-header colour (which is
