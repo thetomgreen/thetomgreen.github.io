@@ -164,6 +164,7 @@
   const $dot      = document.getElementById('status-dot');
   const $banner   = document.getElementById('banner');
   const $toggle   = document.getElementById('toggle-chords');
+  const $followState = document.getElementById('follow-state');
   const $zoomIn   = document.getElementById('zoom-in');
   const $zoomOut  = document.getElementById('zoom-out');
   const $showQR   = document.getElementById('show-qr');
@@ -175,6 +176,11 @@
   // Local UI state (per viewer, persisted in localStorage).
   const lsKey = (k) => `instant.${k}`;
   let zoom = clamp(parseFloat(localStorage.getItem(lsKey('zoom'))) || 18, 12, 64);
+  /// Lyrics-only is the DEFAULT for a web follower — an audience reading
+  /// along wants the words, and chords on a phone-width column push the
+  /// lyrics around. An unset key reads as `false` here, which is that
+  /// default; once a viewer taps the toggle their choice persists for this
+  /// browser, so a returning viewer keeps whatever they last chose.
   let showChords = localStorage.getItem(lsKey('showChords')) === 'true';
   applyZoom();
   applyChordsToggle();
@@ -470,6 +476,16 @@
     const on = effectivelyFollowing();
     if (on !== renderedFollowOn) {
       $toggleFollow.setAttribute('aria-pressed', on ? 'true' : 'false');
+      // Greyed while following (you are already following — the banner beside
+      // it says how to leave), blue when released, where tapping it is the
+      // action to take. Styling only, via `aria-pressed`: the button stays
+      // TAPPABLE while following because tapping it is a second, tested way
+      // to release, alongside scrolling.
+      if ($followState) {
+        $followState.textContent = on ? 'Following, scroll to release'
+                                      : 'Released from follow';
+        $followState.dataset.following = on ? 'true' : 'false';
+      }
       renderedFollowOn = on;
     }
     applyMasterStatus();
@@ -485,6 +501,9 @@
     // viewer is simply in free-scroll now, and the play/pause transport
     // below is the control that actually does something for them.
     $toggleFollow.classList.toggle('hidden', !masterFollowEnabled);
+    // The state banner goes with the button: with tracking off for everyone
+    // there is no follow state to describe.
+    if ($followState) $followState.classList.toggle('hidden', !masterFollowEnabled);
     $toggleFollow.title = 'Follow the performer\'s position — tap to read at your own pace';
   }
   /// Play/pause is shown exactly when the viewer is NOT following: they
@@ -775,6 +794,11 @@
   function applyChordsToggle() {
     $body.dataset.showChords = showChords ? 'true' : 'false';
     $toggle.setAttribute('aria-pressed', showChords ? 'true' : 'false');
+    // The label is the ACTION, not the current state — "Chords" alone left
+    // the viewer guessing which way the toggle was pointing.
+    $toggle.textContent = showChords ? 'Hide chords' : 'Show chords';
+    $toggle.title = showChords ? 'Show the lyrics on their own'
+                               : 'Show the chords above the lyrics';
   }
   function clamp(n, lo, hi)   { return Math.max(lo, Math.min(hi, n)); }
 
@@ -1022,7 +1046,7 @@
       } else {
         const basedOn = extractBasedOn(data.song_raw_text || '');
         basedOnLineIndex = basedOn.index;
-        renderSong(data.song_raw_text || '');
+        renderSong(data.song_raw_text || '', data.song_title || '', basedOn.text);
         $body.dataset.mode = 'song';
         updateSubtitle(basedOn.text);
       }
@@ -1582,10 +1606,40 @@
     return pair;
   }
 
-  function renderSong(rawText) {
+  /// Render the song body.
+  ///
+  /// `title` and `basedOnText` are rendered as a heading block at the TOP OF
+  /// THE SCROLLING TEXT, matching the iOS player: the title bold and 20%
+  /// larger than the lyrics, the "based on …" credit italic at lyric size.
+  /// They scroll away with the song. The fixed copies in the top bar stay
+  /// where they are — that is the persistent identification of what is
+  /// playing, and this is the same thing where the song itself begins.
+  ///
+  /// The heading carries NO `data-raw-line-start`, so it contributes no line
+  /// anchors and the tracker's line↔pixel mapping is untouched;
+  /// `rebuildLineAnchors` reads real `offsetTop`s, so everything below simply
+  /// sits lower.
+  function renderSong(rawText, title, basedOnText) {
     const rawLines = rawText.split('\n');
     const parsed = rawLines.map(raw => ({ raw, kind: classify(raw) }));
     const frag = document.createDocumentFragment();
+    if (title || basedOnText) {
+      const head = document.createElement('div');
+      head.className = 'song-head';
+      if (title) {
+        const h = document.createElement('div');
+        h.className = 'song-head-title';
+        h.textContent = title;
+        head.appendChild(h);
+      }
+      if (basedOnText) {
+        const b = document.createElement('div');
+        b.className = 'song-head-based';
+        b.textContent = basedOnText;
+        head.appendChild(b);
+      }
+      frag.appendChild(head);
+    }
     let i = 0;
     while (i < parsed.length) {
       // Skip the "based on …" line — surfaced as a subtitle above.
@@ -1598,7 +1652,10 @@
         // Render each blank line faithfully; only drop LEADING blanks (nothing
         // above them to space from). Blank-run sizing is normalized at import
         // (ceil(b/2)); the audience page just mirrors the stored song.
-        if (!frag.lastChild) { i += 1; continue; }
+        // "Leading" means before any LINE — the scrolling heading doesn't
+        // count, or a song whose text starts with a blank would gain a gap
+        // under the title that the iOS player doesn't show.
+        if (!frag.querySelector('[data-raw-line-start]')) { i += 1; continue; }
       }
       // Single `#`/`$` visibility-prefix line: shown in only one mode. A
       // bracketed/section header behind the prefix ("#[Guitar Solo]",
@@ -1728,8 +1785,26 @@
     }
   }
 
+  /// Keep the scroll area's top padding equal to the ACTUAL bar height. The
+  /// bar wraps to two rows on a narrow phone (the follow-state banner gets
+  /// its own line), and a hard-coded 52px left the first lines of the song
+  /// hidden underneath it. Line anchors are rebuilt with it, because moving
+  /// the body inside the scroller changes every `offsetTop` they're built on.
+  const $topbar = document.querySelector('.topbar');
+  function syncTopbarHeight() {
+    if (!$topbar) return;
+    const h = $topbar.offsetHeight;
+    if (!h) return;
+    document.documentElement.style.setProperty('--topbar-h', h + 'px');
+  }
+  syncTopbarHeight();
+  if ($topbar && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => { syncTopbarHeight(); rebuildLineAnchors(); }).observe($topbar);
+  }
+
   window.addEventListener('resize', () => {
     // Recompute on viewport size change so wrap reflow doesn't desync.
+    syncTopbarHeight();
     rebuildLineAnchors();
   });
   // Recompute also when the user toggles chords / zooms — both change the

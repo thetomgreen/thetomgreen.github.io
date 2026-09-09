@@ -33,12 +33,20 @@ body {
   gap: 8px;
   min-width: 0;
   flex: 1 1 auto;              /* shrink so long titles ellipsize, not overflow */
+  flex-wrap: wrap;             /* lets the follow-state drop to its own row */
 }
 .title-text {
   display: flex;
   flex-direction: column;
-  min-width: 0;                /* required inside flex for ellipsis */
-  flex: 1 1 auto;
+  /* A floor, not 0: the follow-state banner beside it doesn't shrink, and
+   * without this the title was squeezed out of existence on a phone. It may
+   * ellipsize — the full title is also rendered at the top of the scrolling
+   * song text — but the persistent copy must never vanish. */
+  min-width: 4.5rem;
+  /* `flex-basis: 0`, not `auto`: with wrapping enabled on `.title-wrap`, an
+   * auto basis means a long title claims the whole first row and shoves the
+   * buttons onto a second one. From 0 it just grows into whatever is left. */
+  flex: 1 1 0;
 }
 .title-wrap h1 {
   margin: 0;
@@ -90,7 +98,12 @@ button#toggle-chords, button#toggle-follow, button#toggle-play, .controls button
   flex-shrink: 0;
   white-space: nowrap;
 }
-@media (max-width: 380px) {
+/* Compact from 430px, not 380px. The follow-state banner takes its own row
+ * on these widths, and at full button size the THIRD control (Play, which
+ * only exists while released) wrapped to a row of its own — so the bar grew
+ * and shrank by ~38px every time Follow was tapped, shoving the song down
+ * and back. Two rows in both follow states is the requirement. */
+@media (max-width: 430px) {
   button#toggle-chords, button#toggle-follow, button#toggle-play, .controls button {
     padding: 3px 5px;
     font-size: 0.7rem;
@@ -101,13 +114,60 @@ button#toggle-follow:hover, button#toggle-follow:focus-visible,
 .controls button:hover, .controls button:focus-visible {
   background: #2a2a2a; outline: none;
 }
-button#toggle-chords[aria-pressed="true"],
-button#toggle-follow[aria-pressed="true"] { background: #2c5fff; border-color: #2c5fff; }
+button#toggle-chords[aria-pressed="true"] { background: #2c5fff; border-color: #2c5fff; }
+/* Follow is the inverse of a normal toggle: it is BLUE when the viewer is
+ * released, because that is when tapping it does something. While following
+ * it is disabled and grey — you are already following, and the way out is to
+ * scroll, which the banner beside it says. */
+button#toggle-follow[aria-pressed="false"] { background: #2c5fff; border-color: #2c5fff; }
+button#toggle-follow[aria-pressed="true"] {
+  background: #1a1a1a;
+  border-color: #262626;
+  color: #6a6a6e;
+}
+button#toggle-follow[aria-pressed="true"]:hover { background: #242424; }
+/* Reads to the LEFT of the Follow button, and does NOT shrink: it is a whole
+ * short sentence, and half of one is no use. The top bar's song title gives
+ * up its width instead — that title is now also rendered at the top of the
+ * scrolling text, so an ellipsis up here costs the viewer nothing. */
+.follow-state {
+  font-size: 0.7rem;
+  letter-spacing: 0.01em;
+  color: #8a8a8e;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.follow-state[data-following="false"] { color: #7fa4ff; }
+.follow-state.hidden { display: none; }
+/* Under ~430px the bar cannot hold the title, a whole short sentence AND
+ * five buttons — measured, it overflowed by 18–65px. Rather than truncate
+ * either the title or the sentence (half a sentence is no use), the state
+ * drops to its own row directly beneath. `order` puts it last in the flex
+ * order so the BUTTONS stay on row one with the title; `flex-basis: 100%`
+ * is what forces the wrap. The bar gets taller, which is why its height is
+ * measured into `--topbar-h` rather than hard-coded. */
+/* Inline beside the Follow button needs roughly 550px: title floor + the
+ * sentence + three buttons + the zoom/QR group. Below that it takes its own
+ * row rather than truncating anything. */
+@media (max-width: 600px) {
+  .follow-state {
+    order: 99;
+    flex: 1 0 100%;
+    font-size: 0.68rem;
+    padding-top: 2px;
+  }
+}
 /* The Follow button is removed entirely (not just dimmed) when the
  * performer turns off "Followers track my position" — tapping it could
  * not do anything, so offering it is a lie. The play/pause transport
  * takes its place. */
-button#toggle-follow.hidden, button#toggle-play.hidden { display: none; }
+button#toggle-follow.hidden { display: none; }
+/* Play/pause RESERVES its space when hidden rather than collapsing. It exists
+ * only while released, so collapsing it changed the button group's width with
+ * the follow state — which changed whether the group wrapped, which changed
+ * the bar's height by ~38px, which shoved the song down and back every time
+ * Follow was tapped. Measured at 360px and 390px. */
+button#toggle-play.hidden { visibility: hidden; }
 /* Fixed width: the label swaps between "Pause" (44px) and "Play" (34px),
  * and letting it resize shoved Chords/QR/A-/A+ sideways ~10px on every
  * tap. */
@@ -120,7 +180,11 @@ button#toggle-play { min-width: 3.4rem; }
   top: 0; left: 0; right: 0; bottom: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-top: calc(env(safe-area-inset-top, 8px) + 52px);
+  /* Measured from the real bar (`--topbar-h`, set by main.js) so a bar that
+   * wraps to two rows on a narrow phone doesn't hide the first lines of the
+   * song behind it. The literal is the one-row fallback for a first paint
+   * before the measurement lands. */
+  padding-top: var(--topbar-h, calc(env(safe-area-inset-top, 8px) + 52px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .song-body {
@@ -145,6 +209,30 @@ button#toggle-play { min-width: 3.4rem; }
  * they wrap independently of the lyric beneath; perfect chord-syllable
  * alignment under wrap is the iOS app's job, and not the audience use
  * case. */
+/* Scrolling song heading — the title and "based on" credit at the top of the
+ * song text, mirroring the iOS player. Scrolls away with the song; the top
+ * bar keeps its own persistent copy. Sized in `em` so it tracks the viewer's
+ * zoom: the title is 20% larger than the lyrics and bold, the credit is lyric
+ * size and italic. */
+.song-head {
+  margin-bottom: 0.9em;
+}
+.song-head-title {
+  font-size: 1.2em;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+.song-head-based {
+  font-size: 1em;
+  font-style: italic;
+  line-height: 1.35;
+  color: #8a8a8e;
+  margin-top: 0.15em;
+  overflow-wrap: anywhere;
+}
+
 .line {
   min-height: 1em;
   white-space: pre-wrap;
@@ -159,9 +247,12 @@ button#toggle-play { min-width: 3.4rem; }
 }
 .line.section {
   /* Green italic, matching the iOS player's section-header colour (which is
-   * a dark green on the app's light chart); lightened here for legibility on
-   * this dark share background. Applies in both chords and lyrics-only view. */
-  color: #4fb96e;
+   * a dark green on the app's light chart). Lightened well past the app's
+   * value for legibility on this near-black background: #4fb96e sat at about
+   * 5:1 against #0a0a0a and read as murky at lyric size, particularly for
+   * short markers glanced at mid-song. This mint clears 11:1. Applies in both
+   * chords and lyrics-only view. */
+  color: #86e6ab;
   font-style: italic;
   margin-top: 0.6em;
   margin-bottom: 0.1em;
