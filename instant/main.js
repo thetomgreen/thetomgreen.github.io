@@ -1112,6 +1112,14 @@
     $title.textContent = data.song_title || ' ';
 
     const isList = (data.song_subtitle === LIST_SENTINEL);
+    const hasSongContent = !!(data.song_title || data.song_raw_text);
+    /// "There is no song on screen." Two ways to get here, and the audience
+    /// can't tell them apart: the performer is on a list view, OR the session
+    /// simply has no song loaded — which is what a share STARTED from the set
+    /// list screen produces, a row with no title, no text and no list. That
+    /// second case used to fall through to "Performer is between songs",
+    /// which is precisely the moment the between-songs page is for.
+    const noSong = isList || !hasSongContent;
     masterTranspose = data.transpose_semitones || 0;
     // A sender from before these columns existed sends neither; 0/false is
     // the correct reading of "no capo information", and `capoShift()` is
@@ -1132,11 +1140,11 @@
     interludeURL = nextInterludeURL;
     interludeEmbeddable = nextInterludeEmbeddable;
     const contentChanged = (data.song_raw_text !== renderedSongRawText) ||
-                           (isList !== ($body.dataset.mode === 'list')) ||
+                           (noSong !== ($body.dataset.mode === 'list')) ||
                            // The set list's titles don't change when the
                            // performer edits the link, so without this the
                            // interlude would only appear at the next song.
-                           (isList && interludeChanged);
+                           (noSong && interludeChanged);
 
     // Only adopt the row's transport snapshot when this is a NEW song/view.
     // On a refetch of the same song, the row's virtual_elapsed is stale
@@ -1191,8 +1199,8 @@
     // Re-render on a new song/view, or when only the transpose changed
     // (same text, different key — the audience must follow the performer's
     // live key change without a song switch).
-    if (contentChanged || (transposeChanged && !isList)) {
-      if (isList) {
+    if (contentChanged || (transposeChanged && !noSong)) {
+      if (noSong) {
         // `mode` stays 'list' either way: it is what switches off position
         // tracking, the scroll detacher and the transport, none of which mean
         // anything when there is no song.
@@ -1248,9 +1256,10 @@
     // Show/hide the chord toggle — pointless in list mode.
     $toggle.style.visibility = isList ? 'hidden' : 'visible';
 
-    // Empty state: title and raw text are both empty. Shouldn't happen in
-    // normal use but covers the case where a row gets cleared.
-    const isEmpty = !data.song_title && !data.song_raw_text;
+    // Empty state: nothing to show at all. A configured between-songs page
+    // IS something to show, so it takes precedence — otherwise the interlude
+    // would render underneath "Performer is between songs".
+    const isEmpty = !hasSongContent && !interludeURL;
     $empty.classList.toggle('hidden', !isEmpty);
     $body.style.display = isEmpty ? 'none' : '';
   }
