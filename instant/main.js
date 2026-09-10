@@ -48,13 +48,35 @@
   // -------------------------------------------------------------------
   // Resolve share code from URL
   // -------------------------------------------------------------------
+  /// Query parameters, from the search string OR from anything appended
+  /// after the code in the hash.
+  ///
+  /// The share link puts the code in the HASH (`/instant/?b=…#ub5qy`), so
+  /// the natural thing to type — sticking `?debug=1` on the end — lands
+  /// INSIDE the fragment and silently becomes part of the code
+  /// ("ub5qy?debug=1"), which resolves to "this share session doesn't
+  /// exist". Read both, so either form works.
+  const hashQuery = (() => {
+    const h = location.hash.replace(/^#/, '');
+    const cut = h.search(/[?&]/);
+    return cut < 0 ? '' : h.slice(cut + 1);
+  })();
+  function urlParam(name) {
+    return new URLSearchParams(location.search).get(name)
+        ?? new URLSearchParams(hashQuery).get(name);
+  }
+
   const code = (() => {
     // Path is /instant/<code>, but support hash-only fallback (e.g. for
     // simpler hosts that don't rewrite to index.html).
     const parts = location.pathname.split('/').filter(Boolean);
     const fromPath = parts[parts.indexOf('instant') + 1];
-    if (fromPath) return fromPath;
-    if (location.hash) return location.hash.replace(/^#/, '');
+    // Trailing query junk on the path form too, for the same reason.
+    if (fromPath) return fromPath.split(/[?&]/)[0] || null;
+    if (location.hash) {
+      const raw = location.hash.replace(/^#/, '').split(/[?&]/)[0];
+      return raw || null;
+    }
     return null;
   })();
 
@@ -824,7 +846,7 @@
   // actual audience members see a clean page; still available to us for
   // diagnostics when explicitly enabled.
   // -------------------------------------------------------------------
-  const debugEnabled = new URLSearchParams(location.search).get('debug') === '1';
+  const debugEnabled = urlParam('debug') === '1';
   const $debugHud = (() => {
     if (!debugEnabled) return { textContent: '' };  // no-op stub
     const d = document.createElement('div');
@@ -950,7 +972,7 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
-  const TRACE_PAGE_VERSION = 42;
+  const TRACE_PAGE_VERSION = 43;
 
   if (debugEnabled) {
     const bar = document.createElement('div');
