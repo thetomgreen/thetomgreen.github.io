@@ -1366,7 +1366,7 @@
       lastTickAt = performance.now();
       hideBanner();
       setStatus('live', 'Live');
-      bumpDebug('tick', 'play=' + serverPlaying);
+      bumpDebug('tick', 'play=' + serverPlaying + ' rate=' + serverRate.toFixed(2) + ' el=' + serverElapsed.toFixed(1));
       noteServerPlaybackTransition();
     })
     .on('broadcast', { event: 'row' }, (msg) => {
@@ -2315,17 +2315,21 @@
   /// Compute the host's current line-float position from server state.
   /// Returns null when there's nothing meaningful to point at (host paused
   /// and hasn't reported a scroll position).
-  /// The performer's live elapsed, extrapolated between ticks.
+  /// The performer's live elapsed, extrapolated between ticks at 1× real time.
   ///
-  /// At the performer's OWN rate, not 1× wall time. Under time-based scroll
-  /// those are the same thing; under AUDIO scroll they are not — that clock
-  /// is driven by the position engine, so it speeds up, slows down, and holds
-  /// still while nobody is playing. Extrapolating at 1× meant the audience
-  /// scrolled straight through every silence the performer's page paused for.
-  /// `serverRate` is 0 then, so the page holds with them.
+  /// KNOWN LIMITATION: under AUDIO scroll the performer's clock is driven by
+  /// the position engine — it speeds up, slows down, and holds still while
+  /// nobody is playing — so this over-runs them through a silence pause.
+  ///
+  /// A fix that multiplied by a broadcast `rate` was shipped and REVERTED on
+  /// 2026-09-10: it stopped the audience following at all, in BOTH scroll
+  /// modes. The cause was never established, so the multiplier is not coming
+  /// back until it is. `serverRate` is still captured and shown in the debug
+  /// overlay (`?debug=1`) precisely so the real values can be read off a live
+  /// session — that is the missing evidence.
   function liveElapsed(now) {
     const sinceTick = (now - lastTickAt) / 1000;
-    return serverPlaying ? serverElapsed + sinceTick * serverRate : serverElapsed;
+    return serverPlaying ? serverElapsed + sinceTick : serverElapsed;
   }
 
   function targetLineFloat(now) {
