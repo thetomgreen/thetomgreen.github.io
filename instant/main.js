@@ -972,7 +972,7 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
-  const TRACE_PAGE_VERSION = 43;
+  const TRACE_PAGE_VERSION = 44;
 
   if (debugEnabled) {
     const bar = document.createElement('div');
@@ -1966,14 +1966,29 @@
     // that wrapped onto its own row, so the chart read as three rows
     // (G / Coach / D Am C x4) instead of the two the performer sees.
     //
-    // Two or more overhanging chords means the line is really a chord ROW
-    // with a lyric under it, which is exactly how the iOS player draws it:
-    // one chord line, columns preserved, lyric beneath. Fall back to that.
-    // One overhanging chord is left to the run logic below, so an ordinary
-    // line whose last chord tips a character past the lyric keeps its
-    // chord-over-syllable alignment.
+    // Two or more overhanging chords means the line MIGHT really be a chord
+    // ROW with a lyric under it, which is how the iOS player draws it: one
+    // chord line, columns preserved, lyric beneath. One overhanging chord is
+    // left to the run logic below, so an ordinary line whose last chord tips
+    // a character past the lyric keeps its chord-over-syllable alignment.
+    //
+    // But the overhang count ALONE is not enough, and reading it that way
+    // was a bug (2026-09-10). "It's the free food, when you've already ate"
+    // carries D G over real words and then D Em past the end; two overhang,
+    // so the whole line fell back to a chord ROW — and that row is 60
+    // monospace columns against a 43-character lyric, so it overflowed the
+    // viewport: D and G drew far right of the words they belong to and the
+    // trailing D Em were clipped off the screen entirely.
+    //
+    // The fallback is for the case its comment describes — nothing to pair
+    // MOST of them with, e.g. "Coach" under "G  D  Am  C  x4" — so it also
+    // requires that at most one chord actually has lyric text beneath it.
+    // Anything more and the run logic below does the right thing already:
+    // real syllables keep their chords, and the overhanging tail is emitted
+    // as one column-preserving monospace run.
     const overhang = tokens.filter(t => t.col >= lyricRaw.length).length;
-    if (overhang >= 2) {
+    const overLyric = tokens.length - overhang;
+    if (overhang >= 2 && overLyric <= 1) {
       pair.classList.add('chord-row-pair');
       const chordRow = document.createElement('div');
       chordRow.className = 'line chords chord-row';
