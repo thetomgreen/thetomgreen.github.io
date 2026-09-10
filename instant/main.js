@@ -956,6 +956,9 @@
   let serverElapsed = 0;
   let serverPlaying = false;
   let serverInPlay = false;
+  /// Virtual seconds per real second on the performer's clock. 1 until a tick
+  /// says otherwise, which is also the value an older iOS build implies.
+  let serverRate = 1;
   let serverScrollFraction = null;     // non-null only when out of play mode
   let lastTickAt = 0;                  // performance.now() of last server tick
   let lastRowAt = 0;                   // performance.now() of last row event/refetch
@@ -1276,13 +1279,15 @@
       const el = $body.querySelector('.song-head-based');
       return { hidden: !el, text: el ? el.textContent : '' };
     };
-    window.__setServerTick = (elapsed, playing = true, inPlay = true) => {
+    window.__setServerTick = (elapsed, playing = true, inPlay = true, rate = 1) => {
       serverElapsed = elapsed;
       serverPlaying = !!playing;
       serverInPlay = !!inPlay;
+      serverRate = Math.max(0, rate);
       lastTickAt = performance.now();
       noteServerPlaybackTransition();
     };
+    window.__getLiveElapsed = () => liveElapsed(performance.now());
     window.__getFollowState = () => ({
       trackingEnabled,
       masterFollowEnabled,
@@ -1353,6 +1358,9 @@
       serverPlaying = !!p.playing;
       serverInPlay  = !!p.in_play_mode;
       serverScrollFraction = (typeof p.scroll_fraction === 'number') ? p.scroll_fraction : null;
+      // How fast the performer's clock is actually running. Absent ⇒ an older
+      // iOS build that didn't send it, so assume 1× as the page always did.
+      serverRate = (typeof p.rate === 'number' && isFinite(p.rate)) ? Math.max(0, p.rate) : 1;
       // Master-side follow toggle. Absent ⇒ legacy iOS, default true.
       applyMasterFollow(p.follow_master_position);
       lastTickAt = performance.now();
@@ -1634,6 +1642,30 @@
     return { text: '', index: -1 };
   }
 
+  /// Indices of leading METADATA lines — anything before the first chord line
+  /// that is a version note ("acoustic version", "version 2") or a bare author
+  /// attribution ("by", "by Tom", "by:"). These describe the song rather than
+  /// being part of it, and the app hides them in both its displays, so the
+  /// audience page hides them too.
+  ///
+  /// Ported from `SongPlayerView.topMetadataIndices`. Scoped to CHARTS — no
+  /// chord line means an empty set — which is what makes the bare "by " form
+  /// safe here even though it is deliberately not a global metadata cue
+  /// (it would otherwise eat a lyric like "By the time I get to Phoenix").
+  function topMetadataIndices(parsed) {
+    const firstChord = parsed.findIndex(p => p.kind === 'chords');
+    const out = new Set();
+    if (firstChord < 0) return out;
+    for (let i = 0; i < firstChord; i++) {
+      if (parsed[i].kind !== 'lyrics') continue;
+      const lower = parsed[i].raw.trim().toLowerCase();
+      const isVersion = lower.includes('version');
+      const isBy = lower === 'by' || lower.startsWith('by ') || lower.startsWith('by:');
+      if (isVersion || isBy) out.add(i);
+    }
+    return out;
+  }
+
   /** Returns 'chords' | 'lyrics' | 'blank' | 'section'. */
   function classify(line) {
     const trimmed = line.trim();
@@ -1862,10 +1894,13 @@
       }
       frag.appendChild(head);
     }
+    const hiddenMetadata = topMetadataIndices(parsed);
     let i = 0;
     while (i < parsed.length) {
       // Skip the "based on …" line — surfaced as a subtitle above.
       if (i === basedOnLineIndex) { i += 1; continue; }
+      // Leading version / "by" metadata: hidden in both views, as on device.
+      if (hiddenMetadata.has(i)) { i += 1; continue; }
       const cur = parsed[i];
       const next = parsed[i + 1];
       // Render the doc's blank lines, but collapse a run of consecutive blanks
@@ -2280,10 +2315,17 @@
   /// Compute the host's current line-float position from server state.
   /// Returns null when there's nothing meaningful to point at (host paused
   /// and hasn't reported a scroll position).
-  /// The performer's live elapsed, extrapolated between the ~3 Hz ticks.
+  /// The performer's live elapsed, extrapolated between ticks.
+  ///
+  /// At the performer's OWN rate, not 1× wall time. Under time-based scroll
+  /// those are the same thing; under AUDIO scroll they are not — that clock
+  /// is driven by the position engine, so it speeds up, slows down, and holds
+  /// still while nobody is playing. Extrapolating at 1× meant the audience
+  /// scrolled straight through every silence the performer's page paused for.
+  /// `serverRate` is 0 then, so the page holds with them.
   function liveElapsed(now) {
     const sinceTick = (now - lastTickAt) / 1000;
-    return serverPlaying ? serverElapsed + sinceTick : serverElapsed;
+    return serverPlaying ? serverElapsed + sinceTick * serverRate : serverElapsed;
   }
 
   function targetLineFloat(now) {
