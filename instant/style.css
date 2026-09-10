@@ -178,6 +178,11 @@ button#toggle-follow[aria-pressed="true"]:hover { background: #242424; }
 }
 .bar-break { display: none; }
 @media (max-width: 700px) { .bar-break { display: block; } }
+/* NB the break deliberately stays in place on a set list, where the Follow
+ * control is hidden. Collapsing the bar to one row there would make it jump
+ * by a row on every song-to-list transition — and a bar that changes height
+ * shoves the content under it up and down, which is the thing this layout
+ * exists to prevent. One height, every view. */
 /* Below ~340px (iPhone SE-class) the sentence and the zoom/QR group cannot
  * share a row, and whether they fit depends on WHICH sentence is showing —
  * so the bar changed height when the viewer released the follow. Give the
@@ -209,6 +214,72 @@ button#toggle-play { min-width: 3.4rem; }
   margin-left: auto;
 }
 
+/* "Between songs" page — the interlude.
+ * ------------------------------------------------------------------ */
+.interlude {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-h, 48px) - 24px);
+}
+/* The frame takes the room, the link sits under it. `flex: 1` rather than a
+ * viewport calc so it can't disagree with the bar's measured height. */
+.interlude-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 60vh;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;          /* most pages assume one; don't flash black */
+}
+/* The no-frame card: QR and one big tap target, centred. */
+.interlude-card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.4rem;
+  padding: 1rem 0 2rem;
+}
+.interlude-qr {
+  width: min(62vw, 300px);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+}
+.interlude-qr canvas {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+.interlude-link {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.7em 1.4em;
+  border-radius: 999px;
+  background: #2c5fff;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-decoration: none;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.interlude-frame + .interlude-link {
+  /* Under a frame it's a secondary action, not the headline. */
+  align-self: center;
+  margin-top: 0.7rem;
+  padding: 0.45em 1.1em;
+  font-size: 0.85rem;
+  background: #1f1f1f;
+  border: 1px solid #2c2c2c;
+}
+.interlude-link:hover, .interlude-link:focus-visible { filter: brightness(1.12); }
+
 /* Scroll area */
 .scroll-area {
   position: absolute;
@@ -231,6 +302,9 @@ button#toggle-play { min-width: 3.4rem; }
   font-variant-ligatures: none;
 }
 .bottom-spacer { height: 80vh; }    /* let the last line scroll to mid-screen */
+/* ...but a list or the between-songs page has no last line to scroll up to,
+ * and the spacer just adds 80vh of empty scroll under a static screen. */
+.song-body[data-mode="list"] ~ .bottom-spacer { height: 0; }
 
 /* Lyric and chord rendering
  *

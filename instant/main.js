@@ -200,6 +200,14 @@
   /// is sounding pitch rather than fretted shapes).
   let songCapo = 0;
   let capoCompensated = false;
+  /// "Between songs" page. `interludeURL` is what the performer configured;
+  /// `interludeEmbeddable` is the APP's verdict on whether that URL can be
+  /// framed, read from the response headers on the performer's device. The
+  /// page can't work this out for itself — a cross-origin frame is opaque
+  /// whether it loaded or was refused — so a false here means "render the
+  /// link and QR", never "try the frame and see".
+  let interludeURL = '';
+  let interludeEmbeddable = false;
   /// What the song was last rendered from, so a capo toggle can re-render
   /// without waiting for the performer to send anything.
   let renderedSongTitle = '';
@@ -493,7 +501,7 @@
   // Cache the rendered state: applyFollowToggle is called every frame, and
   // touching DOM attributes 60x/sec for no reason is wasteful.
   let renderedFollowOn = null;
-  let renderedMasterOn = null;
+  let renderedFollowUseful = null;
   let renderedPlayVisible = null;
   let renderedPlayOn = null;
   function applyFollowToggle() {
@@ -518,17 +526,22 @@
   }
   function applyMasterStatus() {
     if (!$toggleFollow) return;
-    if (masterFollowEnabled === renderedMasterOn) return;
-    renderedMasterOn = masterFollowEnabled;
-    // When the performer turns off "Followers track my position", REMOVE the
-    // Follow button rather than dimming it. Tapping it cannot have any
-    // effect in that state, so presenting it at all is misleading — the
-    // viewer is simply in free-scroll now, and the play/pause transport
-    // below is the control that actually does something for them.
-    $toggleFollow.classList.toggle('hidden', !masterFollowEnabled);
-    // The state banner goes with the button: with tracking off for everyone
-    // there is no follow state to describe.
-    if ($followState) $followState.classList.toggle('hidden', !masterFollowEnabled);
+    // Two ways for Follow to be pointless, and both get the same treatment —
+    // REMOVE the button rather than dim it. A control that cannot do anything
+    // is worse than no control.
+    //   1. The performer turned off "Followers track my position": tapping
+    //      cannot have any effect, and the viewer is simply free-scrolling.
+    //   2. There is no song — a set list, or the between-songs page. The
+    //      scroll loop returns early there, so there is no position to
+    //      follow and nothing to release from. This is the same rule the
+    //      play/pause transport already follows.
+    const useful = masterFollowEnabled && $body.dataset.mode !== 'list';
+    if (useful === renderedFollowUseful) return;
+    renderedFollowUseful = useful;
+    $toggleFollow.classList.toggle('hidden', !useful);
+    // The state banner goes with the button: with no follow to be in, there
+    // is no follow state to describe.
+    if ($followState) $followState.classList.toggle('hidden', !useful);
     $toggleFollow.title = 'Follow the performer\'s position — tap to read at your own pace';
   }
   /// Play/pause is shown exactly when the viewer is NOT following: they
@@ -1013,6 +1026,7 @@
     'is_in_play_mode', 'is_playing', 'virtual_elapsed',
     'follow_master_position',
     'song_capo', 'capo_compensated',
+    'interlude_url', 'interlude_embeddable',
     'updated_at', 'expires_at', 'created_at',
   ].join(',');
 
@@ -1108,8 +1122,21 @@
     const transposeChanged = newTranspose !== currentTranspose;
     currentTranspose = newTranspose;
     applyCapoToggle();
+    // A sender from before these columns existed sends neither; '' / false is
+    // the correct reading of "no between-songs page", which is exactly the
+    // behaviour the share had before this existed.
+    const nextInterludeURL = data.interlude_url || '';
+    const nextInterludeEmbeddable = !!data.interlude_embeddable;
+    const interludeChanged = nextInterludeURL !== interludeURL ||
+                             nextInterludeEmbeddable !== interludeEmbeddable;
+    interludeURL = nextInterludeURL;
+    interludeEmbeddable = nextInterludeEmbeddable;
     const contentChanged = (data.song_raw_text !== renderedSongRawText) ||
-                           (isList !== ($body.dataset.mode === 'list'));
+                           (isList !== ($body.dataset.mode === 'list')) ||
+                           // The set list's titles don't change when the
+                           // performer edits the link, so without this the
+                           // interlude would only appear at the next song.
+                           (isList && interludeChanged);
 
     // Only adopt the row's transport snapshot when this is a NEW song/view.
     // On a refetch of the same song, the row's virtual_elapsed is stale
@@ -1166,7 +1193,11 @@
     // live key change without a song switch).
     if (contentChanged || (transposeChanged && !isList)) {
       if (isList) {
-        renderList(data.song_raw_text || '');
+        // `mode` stays 'list' either way: it is what switches off position
+        // tracking, the scroll detacher and the transport, none of which mean
+        // anything when there is no song.
+        if (interludeURL) renderInterlude();
+        else renderList(data.song_raw_text || '');
         $body.dataset.mode = 'list';
         // Lists are static — show them from the top, not wherever the
         // previous song's scrollTop happened to leave us.
@@ -1180,6 +1211,10 @@
         $body.dataset.mode = 'song';
       }
       renderedSongRawText = data.song_raw_text || '';
+      // The bar's Follow control depends on the MODE, and the frame loop
+      // returns early on a list — so without this the button would keep the
+      // state it had when the last song ended.
+      applyFollowToggle();
       // Re-measure DOM line positions before deciding scroll position.
       // A transpose-only re-render keeps the viewer's current position.
       rebuildLineAnchors();
@@ -1920,6 +1955,73 @@
       }
     }
     $body.replaceChildren(frag);
+  }
+
+  /// "Between songs" page.
+  ///
+  /// Two shapes, chosen by the app's header check — never guessed here:
+  ///  - embeddable: the site itself in a frame, with a link under it so the
+  ///    viewer can still open it properly (a framed page can't be shared,
+  ///    bookmarked, or logged into on some sites).
+  ///  - not embeddable: a card with a QR and one big tap target. This is not
+  ///    a consolation prize — on a mirrored screen or a projector, which
+  ///    nobody can tap, the QR is the only thing that works at all.
+  function renderInterlude() {
+    const wrap = document.createElement('div');
+    wrap.className = 'interlude';
+    let host = interludeURL;
+    try { host = new URL(interludeURL).host.replace(/^www\./, ''); } catch (_) {}
+
+    if (interludeEmbeddable) {
+      const frame = document.createElement('iframe');
+      frame.className = 'interlude-frame';
+      frame.src = interludeURL;
+      frame.title = 'Between songs';
+      // No `allow-top-navigation`: the framed page must not be able to
+      // steer the audience away from the performance.
+      frame.setAttribute('sandbox',
+        'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox');
+      frame.setAttribute('referrerpolicy', 'no-referrer');
+      wrap.appendChild(frame);
+      wrap.appendChild(interludeLink(host, 'Open ' + host));
+    } else {
+      const card = document.createElement('div');
+      card.className = 'interlude-card';
+      const qr = document.createElement('div');
+      qr.className = 'interlude-qr';
+      card.appendChild(qr);
+      card.appendChild(interludeLink(host, host));
+      wrap.appendChild(card);
+      // Async, and deliberately not awaited: the card is complete and
+      // readable without it, so a CDN that is slow or blocked costs the
+      // QR and nothing else.
+      renderInterludeQR(qr, interludeURL);
+    }
+    $body.replaceChildren(wrap);
+  }
+
+  function interludeLink(host, label) {
+    const a = document.createElement('a');
+    a.className = 'interlude-link';
+    a.href = interludeURL;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    // The HOST is the label, not a slogan: the viewer is about to leave the
+    // page, and they are entitled to see where to.
+    a.textContent = label;
+    return a;
+  }
+
+  async function renderInterludeQR(target, url) {
+    try {
+      const QRious = await loadQRLib();
+      const canvas = document.createElement('canvas');
+      target.replaceChildren(canvas);
+      new QRious({ element: canvas, value: url, size: 600, level: 'M',
+                   backgroundAlpha: 1, background: '#fff', foreground: '#000' });
+    } catch (e) {
+      target.replaceChildren();
+    }
   }
 
   /** List view — one title per line, simple stacked rendering. No chord
