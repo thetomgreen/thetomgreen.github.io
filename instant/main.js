@@ -487,6 +487,7 @@
     if (typeof value !== 'boolean') return;
     const prev = masterFollowEnabled;
     masterFollowEnabled = value;
+    if (prev !== value) trace('masterFollowChanged', { from: prev, to: value });
     // A false→true rising edge re-attaches tracking followers so they travel
     // to the performer's current position rather than sitting where whatever
     // free-scrolling they did left them.
@@ -624,6 +625,11 @@
     // scroll at song pace, so detaching there would only strip the Follow
     // button and put a dead transport on screen over a static list.
     if ($body.dataset.mode === 'list') return;
+    // The single most likely explanation for "it stopped following": the
+    // page decided the VIEWER scrolled. Record every one with the numbers
+    // that triggered it, so a false positive is distinguishable from a real
+    // gesture rather than being guessed at.
+    trace('noteManualScroll', traceSnapshot());
     // Seed the safe-mode clock ONLY when arriving from a following state.
     // A viewer already in safe mode (they tapped Follow off) has their own
     // clock running, and re-seeding it from the performer would throw that
@@ -841,6 +847,135 @@
       `started:${songHasStarted ? 'Y' : 'n'} safeTop:${safeScrollTop.toFixed(1)} lf:${displayedLineFloat.toFixed(2)} sf:${serverScrollFraction === null ? '∅' : serverScrollFraction.toFixed(3)}\n` +
       `leadIn:${leadInSeconds().toFixed(1)}s elap:${serverElapsed.toFixed(1)} safeElap:${safeElapsed.toFixed(1)} run:${safeClockRunning() ? 'Y' : 'n'} ovr:${safePlayOverride === null ? '-' : (safePlayOverride ? 'play' : 'pause')}\n` +
       `iOS:\n${iosLastLines.slice(-6).join('\n')}`;
+  }
+
+  // -------------------------------------------------------------------
+  // Trace recorder (?debug=1 only)
+  //
+  // The HUD above is fine for watching one number, and useless for
+  // explaining why the page stopped following the performer — that needs
+  // the whole sequence: what arrived on the wire, what the page believed,
+  // and where it actually scrolled, all on one timeline. Reading it aloud
+  // off a phone is not a reasonable ask, so this records it and hands over
+  // a file.
+  //
+  // Zero cost when debug is off: every entry point checks the flag first.
+  // -------------------------------------------------------------------
+  const TRACE_MAX = 6000;
+  const traceLog = [];
+  const traceStartedAt = Date.now();
+  function trace(kind, data) {
+    if (!debugEnabled) return;
+    traceLog.push({ t: +(performance.now() / 1000).toFixed(3), kind, ...data });
+    if (traceLog.length > TRACE_MAX) traceLog.splice(0, traceLog.length - TRACE_MAX);
+  }
+
+  /// Everything the page believes right now. Sampled a few times a second
+  /// and on every inbound message, so a freeze can be localised to a
+  /// specific flag rather than inferred.
+  function traceSnapshot() {
+    let target = null;
+    try { target = targetLineFloat(performance.now()); } catch (e) { target = 'ERR:' + e.message; }
+    return {
+      // --- what the performer told us
+      serverElapsed: +serverElapsed.toFixed(3),
+      serverRate: +serverRate.toFixed(3),
+      serverPlaying, serverInPlay,
+      serverScrollFraction,
+      tickAgeMs: lastTickAt ? Math.round(performance.now() - lastTickAt) : null,
+      // --- what we computed from it
+      liveElapsed: +liveElapsed(performance.now()).toFixed(3),
+      targetLineFloat: typeof target === 'number' ? +target.toFixed(3) : target,
+      displayedLineFloat: +displayedLineFloat.toFixed(3),
+      // --- the gates that can stop the page
+      effectivelyFollowing: effectivelyFollowing(),
+      trackingEnabled, masterFollowEnabled, detachedDuringSong,
+      fastCatchUp, repositioning, songHasStarted,
+      safeClockRunning: safeClockRunning(),
+      safeElapsed: +safeElapsed.toFixed(3),
+      safePlayOverride,
+      // --- and where the page really is
+      scrollTop: Math.round($scroll.scrollTop),
+      lastAppliedScrollTop: lastAppliedScrollTop === null ? null : Math.round(lastAppliedScrollTop),
+      scrollHeight: Math.round($scroll.scrollHeight),
+      clientHeight: Math.round($scroll.clientHeight),
+      lineCount: lineAnchors.length,
+      mode: $body.dataset.mode || null,
+    };
+  }
+
+  function traceSample(reason) {
+    if (!debugEnabled) return;
+    trace('sample', { reason, ...traceSnapshot() });
+  }
+
+  function traceDownload() {
+    const payload = {
+      capturedAt: new Date().toISOString(),
+      startedAt: new Date(traceStartedAt).toISOString(),
+      pageVersion: TRACE_PAGE_VERSION,
+      url: location.href,
+      userAgent: navigator.userAgent,
+      viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio },
+      song: row ? {
+        title: row.song_title, capo: row.song_capo,
+        lengthSeconds: row.length_seconds,
+        transpose: row.transpose_semitones,
+        tempoAcceleration: row.tempo_acceleration,
+        followMasterPosition: row.follow_master_position,
+      } : null,
+      counts: debugCounts,
+      entries: traceLog,
+    };
+    const text = JSON.stringify(payload, null, 1);
+    const name = `instant-trace-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    const blob = new Blob([text], { type: 'application/json' });
+    // Share sheet first on a phone — a blob download on iOS Safari lands in
+    // Files with no confirmation and is easy to lose. Fall back to a plain
+    // download, then to the clipboard, so there is always a way out.
+    const file = (typeof File === 'function') ? new File([blob], name, { type: 'application/json' }) : null;
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: 'Instant Share trace' }).catch(() => downloadBlob(blob, name));
+      return;
+    }
+    downloadBlob(blob, name);
+  }
+
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
+  }
+
+  const TRACE_PAGE_VERSION = 42;
+
+  if (debugEnabled) {
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;right:6px;bottom:env(safe-area-inset-bottom,4px);z-index:60;display:flex;gap:6px;';
+    const mk = (label, fn) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = 'font:11px/1 ui-monospace,monospace;padding:8px 10px;border-radius:6px;border:1px solid #4af;background:#012;color:#9fe;';
+      b.addEventListener('click', fn);
+      bar.appendChild(b);
+      return b;
+    };
+    mk('⬇ trace', traceDownload);
+    mk('copy', async () => {
+      try {
+        await navigator.clipboard.writeText(JSON.stringify({ entries: traceLog }, null, 1));
+        alert('Trace copied (' + traceLog.length + ' entries)');
+      } catch (e) { alert('Copy failed: ' + e.message); }
+    });
+    mk('mark', () => { trace('MARK', traceSnapshot()); });
+    document.body.appendChild(bar);
+    // Steady heartbeat so a freeze is visible as a flat line rather than as
+    // an absence of records.
+    setInterval(() => traceSample('heartbeat'), 500);
+    window.__traceLog = () => traceLog;
   }
 
   function applyZoom()        { document.documentElement.style.setProperty('--font-size', zoom + 'px'); }
@@ -1093,6 +1228,16 @@
     // which is exactly the window the row exists to cover.
     if (lastTickAt === 0) applyMasterFollow(data.follow_master_position);
     bumpDebug('applyRow', 'sub=' + (data.song_subtitle ?? '∅'));
+    trace('applyRow', {
+      title: data.song_title, capo: data.song_capo,
+      lengthSeconds: data.length_seconds,
+      transpose: data.transpose_semitones,
+      isPlaying: data.is_playing, isInPlayMode: data.is_in_play_mode,
+      virtualElapsed: data.virtual_elapsed,
+      followMasterPosition: data.follow_master_position,
+      textLen: (data.song_raw_text || '').length,
+      ...traceSnapshot(),
+    });
     // expires_at past is NOT a reliable "ended" signal — it just means
     // no row WRITE has happened in ~4 hours. Two distinct cases:
     //   (a) Host explicitly stopped sharing → expires_at is forced to
@@ -1367,6 +1512,9 @@
       hideBanner();
       setStatus('live', 'Live');
       bumpDebug('tick', 'play=' + serverPlaying + ' rate=' + serverRate.toFixed(2) + ' el=' + serverElapsed.toFixed(1));
+      // Raw payload as well as the derived state: if the app is sending
+      // something unexpected, that has to be visible without inference.
+      trace('tick', { raw: p, ...traceSnapshot() });
       noteServerPlaybackTransition();
     })
     .on('broadcast', { event: 'row' }, (msg) => {
