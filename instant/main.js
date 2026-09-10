@@ -385,8 +385,26 @@
   /// browser scroll-anchoring jitter without swallowing a real gesture.
   const USER_SCROLL_TOLERANCE_PX = 2;
 
-  $zoomIn.addEventListener('click', () => { zoom = clamp(zoom + 2, 12, 64); applyZoom(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
-  $zoomOut.addEventListener('click', () => { zoom = clamp(zoom - 2, 12, 64); applyZoom(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
+  // Guarded: an `index.html` that lags `main.js` by one deploy (or a viewer
+  // holding a cached copy) would otherwise throw HERE, at module scope, and
+  // abort the whole script BEFORE the render loop and the realtime
+  // subscription ever start — a permanently blank page with nothing on screen
+  // saying why. The load-bearing refs ($body/$scroll/$title/$dot/$banner) are
+  // deliberately left unguarded: a guard there would only turn a loud failure
+  // into a silent one.
+  //
+  // `reflowAfterRenderChange()` keeps the reader's LINE across the zoom. When
+  // the text shrinks past the current offset the browser clamps scrollTop, and
+  // the loop reads that jump as a viewer gesture and silently stops following
+  // the performer — measured: a follower near the end of a long song who taps
+  // A− is detached for the rest of it. Same call the chords toggle already
+  // makes, for the same reason.
+  //
+  // It must NOT move inside `applyZoom()`: that runs during init, above the
+  // `let lineAnchors` / `let lastAppliedScrollTop` declarations, and would
+  // throw a temporal-dead-zone ReferenceError that kills the page (verified).
+  if ($zoomIn) $zoomIn.addEventListener('click', () => { zoom = clamp(zoom + 2, 12, 64); applyZoom(); reflowAfterRenderChange(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
+  if ($zoomOut) $zoomOut.addEventListener('click', () => { zoom = clamp(zoom - 2, 12, 64); applyZoom(); reflowAfterRenderChange(); localStorage.setItem(lsKey('zoom'), String(zoom)); });
 
   // -------------------------------------------------------------------
   // Pinch-zoom — translate two-finger gestures into our zoom commands.
@@ -418,8 +436,11 @@
       }
     }, { passive: false });
     document.addEventListener('touchend', () => {
+      // Inside the pinch guard on purpose: a bare reflow on every finger lift
+      // would re-place the page after every ordinary scroll.
       if (initialDist > 0) {
         initialDist = 0;
+        reflowAfterRenderChange();
         localStorage.setItem(lsKey('zoom'), String(zoom));
       }
     });
@@ -433,6 +454,7 @@
       applyZoom();
     }, { passive: false });
     document.addEventListener('gestureend', () => {
+      reflowAfterRenderChange();
       localStorage.setItem(lsKey('zoom'), String(zoom));
     });
   })();
@@ -814,7 +836,7 @@
     });
     return qrLibPromise;
   }
-  $showQR.addEventListener('click', async () => {
+  if ($showQR) $showQR.addEventListener('click', async () => {
     const url = location.href;
     $qrUrl.textContent = url;
     $qrOverlay.classList.remove('hidden');
@@ -830,13 +852,13 @@
       $qrTarget.textContent = 'Couldn’t render the QR — copy the link instead.';
     }
   });
-  $qrClose.addEventListener('click', () => { $qrOverlay.classList.add('hidden'); });
-  $qrOverlay.addEventListener('click', (e) => {
+  if ($qrClose) $qrClose.addEventListener('click', () => { $qrOverlay?.classList.add('hidden'); });
+  if ($qrOverlay) $qrOverlay.addEventListener('click', (e) => {
     // Click on the dark area outside the card also dismisses.
     if (e.target === $qrOverlay) $qrOverlay.classList.add('hidden');
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$qrOverlay.classList.contains('hidden')) {
+    if (e.key === 'Escape' && $qrOverlay && !$qrOverlay.classList.contains('hidden')) {
       $qrOverlay.classList.add('hidden');
     }
   });
@@ -858,6 +880,8 @@
   let debugCounts = { tick: 0, row_bcast: 0, pg_change: 0, refetch: 0, applyRow: 0, ios_dbg: 0 };
   let iosLastLines = [];
   function bumpDebug(kind, info) {
+    // Same reason: the HUD string calls leadInSeconds() -> scrollGeometry().
+    if (!debugEnabled) return;
     debugCounts[kind] = (debugCounts[kind] || 0) + 1;
     const r = row || {};
     $debugHud.textContent =
@@ -896,6 +920,13 @@
   /// and on every inbound message, so a freeze can be localised to a
   /// specific flag rather than inferred.
   function traceSnapshot() {
+    // Cheap when debug is off. `trace()` guards its own body, but its ARGUMENT
+    // is evaluated at the call site first — and `noteManualScroll` is wired to
+    // touchmove, so every frame of an audience drag was forcing a style+layout
+    // flush (scrollTop/scrollHeight/clientHeight reads plus targetLineFloat)
+    // interleaved with the render loop's scrollTop write. Measured 10 layout
+    // reads per 10 touchmoves with debug OFF; now zero.
+    if (!debugEnabled) return {};
     let target = null;
     try { target = targetLineFloat(performance.now()); } catch (e) { target = 'ERR:' + e.message; }
     return {
@@ -972,7 +1003,7 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
-  const TRACE_PAGE_VERSION = 44;
+  const TRACE_PAGE_VERSION = 45;
 
   if (debugEnabled) {
     const bar = document.createElement('div');
@@ -1508,7 +1539,13 @@
       filter: 'id=eq.' + code
     }, (payload) => {
       bumpDebug('pg_change', 'has new=' + !!payload.new);
-      if (payload.new) applyRow(payload.new);
+      // The subscription is `event: '*'`, and supabase-js hands a DELETE
+      // `{ new: {}, old: {...} }` — and `{}` is truthy. `applyRow({})` replaces
+      // `row` wholesale, so the page shows "Performer is between songs" instead
+      // of "Session ended", and — worse — `new Date(row.expires_at)` becomes an
+      // Invalid Date, which makes BOTH branches of the expiry watchdog false
+      // and disables it permanently. Require a real record.
+      if (payload.new && payload.new.id) applyRow(payload.new);
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') setStatus('live', 'Live');
