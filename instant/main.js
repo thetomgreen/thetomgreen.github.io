@@ -1003,7 +1003,7 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
-  const TRACE_PAGE_VERSION = 47;
+  const TRACE_PAGE_VERSION = 48;
 
   if (debugEnabled) {
     const bar = document.createElement('div');
@@ -1898,6 +1898,27 @@
     return out;
   }
 
+  /// Indices of leading ATTRIBUTION lines — any lyric line before the first
+  /// chord line starting "based on", "based upon" or "parody of". The app shows
+  /// these italic in BOTH views (`SongPlayerView.topAttributionIndices`); the
+  /// page used to send them down the metadata path, which is chords-only, so a
+  /// credit that wasn't the song's first line vanished from the lyrics view
+  /// (Tonight: "Version: gen" above "Based on: …"). Scoped to charts, as on
+  /// device. A first-line "based on" still becomes the head credit —
+  /// `basedOnLineIndex` is skipped before this is consulted.
+  function topAttributionIndices(parsed) {
+    const firstChord = parsed.findIndex(p => p.kind === 'chords');
+    const out = new Set();
+    if (firstChord < 0) return out;
+    for (let i = 0; i < firstChord; i++) {
+      if (parsed[i].kind !== 'lyrics') continue;
+      const lower = parsed[i].raw.trim().toLowerCase();
+      if (lower.startsWith('based on') || lower.startsWith('based upon') ||
+          lower.startsWith('parody of')) out.add(i);
+    }
+    return out;
+  }
+
   /** Returns 'chords' | 'lyrics' | 'blank' | 'section'. */
   function classify(line) {
     const trimmed = line.trim();
@@ -2173,12 +2194,24 @@
       frag.appendChild(head);
     }
     const hiddenMetadata = topMetadataIndices(parsed);
+    const attribution = topAttributionIndices(parsed);
     let i = 0;
     while (i < parsed.length) {
       // Skip the "based on …" line — surfaced as a subtitle above.
       if (i === basedOnLineIndex) { i += 1; continue; }
       // Leading version / "by" metadata: hidden in both views, as on device.
       if (hiddenMetadata.has(i)) { i += 1; continue; }
+      // Leading "Based on …" / "Parody of …": italic, both views, as on device.
+      if (attribution.has(i)) {
+        const div = document.createElement('div');
+        div.className = 'line lyric attribution';
+        div.dataset.rawLineStart = String(i);
+        div.dataset.rawLineEnd = String(i);
+        div.textContent = parsed[i].raw.trim();
+        frag.appendChild(div);
+        i += 1;
+        continue;
+      }
       const cur = parsed[i];
       const next = parsed[i + 1];
       // Render the doc's blank lines, but collapse a run of consecutive blanks

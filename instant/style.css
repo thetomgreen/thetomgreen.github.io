@@ -361,6 +361,9 @@ button#toggle-play { min-width: 3.4rem; }
   overflow-wrap: anywhere;
 }
 .line.lyric { color: #f5f5f5; }
+/* A "Based on …" / "Parody of …" credit that isn't the song's first line
+ * (the first-line one rides in the head). Italic in both views, as on device. */
+.line.attribution { font-style: italic; }
 .line.chords {
   color: #6ea8ff;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
