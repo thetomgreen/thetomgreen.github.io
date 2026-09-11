@@ -1003,7 +1003,7 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
-  const TRACE_PAGE_VERSION = 46;
+  const TRACE_PAGE_VERSION = 47;
 
   if (debugEnabled) {
     const bar = document.createElement('div');
@@ -1487,6 +1487,7 @@
   if (debugEnabled) {
     window.__applyRow = applyRow;
     window.__applyRowEvent = applyRowEvent;
+    window.__getLineAnchor = (rawIndex) => lineAnchors[rawIndex] || null;
     window.__loadInitial = loadInitial;
     window.__getDotClass = () => $dot.className;
     // Run the connection watchdog as if `aheadMs` had passed with no traffic.
@@ -2109,6 +2110,37 @@
   /// anchors and the tracker's line↔pixel mapping is untouched;
   /// `rebuildLineAnchors` reads real `offsetTop`s, so everything below simply
   /// sits lower.
+  /// A single `#`/`$` visibility-prefix line: shown in only one view. A
+  /// bracketed/section header behind the prefix ("#[Guitar Solo]",
+  /// "$[Bridge]") gets the green-italic section treatment; anything else is
+  /// a plain lyric. `data-only-mode` drives the CSS that hides it in the
+  /// other view.
+  function prefixedLineElement(prefixed, rawIndex) {
+    const div = document.createElement('div');
+    div.dataset.rawLineStart = String(rawIndex);
+    div.dataset.rawLineEnd = String(rawIndex);
+    div.dataset.onlyMode = prefixed.mode;
+    if (isSectionHeader(prefixed.content)) {
+      div.className = 'line section';
+      div.textContent = normalizeSectionHeader(prefixed.content.trim()) || ' ';
+    } else {
+      div.className = 'line lyric';
+      div.textContent = prefixed.content || ' ';
+    }
+    return div;
+  }
+
+  /// A chord line with no lyric under it (same output as `renderSong`'s
+  /// generic standalone-chords branch).
+  function chordLineElement(raw, rawIndex) {
+    const div = document.createElement('div');
+    div.className = 'line chords';
+    div.dataset.rawLineStart = String(rawIndex);
+    div.dataset.rawLineEnd = String(rawIndex);
+    div.textContent = transposeChordLineString(raw, currentTranspose);
+    return div;
+  }
+
   function renderSong(rawText, title, basedOnText) {
     const rawLines = rawText.split('\n');
     const parsed = rawLines.map(raw => ({ raw, kind: classify(raw) }));
@@ -2167,18 +2199,7 @@
       // the other view. (The `# ... #` wrapped form is not handled.)
       const prefixed = prefixVisibility(cur.raw);
       if (prefixed) {
-        const div = document.createElement('div');
-        div.dataset.rawLineStart = String(i);
-        div.dataset.rawLineEnd = String(i);
-        div.dataset.onlyMode = prefixed.mode;
-        if (isSectionHeader(prefixed.content)) {
-          div.className = 'line section';
-          div.textContent = normalizeSectionHeader(prefixed.content.trim()) || ' ';
-        } else {
-          div.className = 'line lyric';
-          div.textContent = prefixed.content || ' ';
-        }
-        frag.appendChild(div);
+        frag.appendChild(prefixedLineElement(prefixed, i));
         i += 1;
         continue;
       }
@@ -2206,6 +2227,52 @@
           div.textContent = annotation;
           frag.appendChild(div);
         }
+        i += 1;
+        continue;
+      }
+      // A chord line directly above a single `#`/`$` line. The generic pair
+      // below would hang the chords over the RAW prefixed text — marker and
+      // all — and the pair isn't what `data-only-mode` hides, so a `#foo`
+      // line showed in the chords view. Mirror the iOS player instead:
+      //  • `#foo` (lyrics view only): the chords view drops it, so the chord
+      //    line pairs with the lyric AFTER it; the lyrics view shows `foo`.
+      //  • `$foo` (chords view only): the chords pair with `foo`, and the
+      //    whole pair is chords-view-only.
+      //  • a prefixed section header never takes chords.
+      const nextPrefixed = (cur.kind === 'chords' && next) ? prefixVisibility(next.raw) : null;
+      if (nextPrefixed) {
+        const after = parsed[i + 2];
+        if (nextPrefixed.mode === 'lyrics') {
+          if (after && after.kind === 'lyrics' && !prefixVisibility(after.raw)
+              && hashAnnotationContent(after.raw) === null) {
+            // DOM order follows the lyrics view (the `#` line comes first).
+            // The pair's range (i..i+2) overlaps the `#` line's (i+1);
+            // `rebuildLineAnchors` keeps the first claim on a line.
+            frag.appendChild(prefixedLineElement(nextPrefixed, i + 1));
+            const pair = renderChordLyricPair(cur.raw, after.raw);
+            pair.dataset.rawLineStart = String(i);
+            pair.dataset.rawLineEnd = String(i + 2);
+            frag.appendChild(pair);
+            i += 3;
+          } else {
+            frag.appendChild(chordLineElement(cur.raw, i));
+            frag.appendChild(prefixedLineElement(nextPrefixed, i + 1));
+            i += 2;
+          }
+          continue;
+        }
+        if (!isSectionHeader(nextPrefixed.content)) {
+          const pair = renderChordLyricPair(cur.raw, nextPrefixed.content);
+          pair.dataset.rawLineStart = String(i);
+          pair.dataset.rawLineEnd = String(i + 1);
+          pair.dataset.onlyMode = 'chords';
+          frag.appendChild(pair);
+          i += 2;
+          continue;
+        }
+        // `$[Header]` under a chord line: the chord line stands alone; the
+        // header is rendered by the prefix branch on the next pass.
+        frag.appendChild(chordLineElement(cur.raw, i));
         i += 1;
         continue;
       }
@@ -2386,6 +2453,10 @@
       const count = (endL - start + 1);
       const sub = height / count;
       for (let k = 0; k < count; k++) {
+        // First claim wins. Ranges are disjoint except where a chord line
+        // pairs across a hidden `#` line (see `renderSong`); there the `#`
+        // line, placed first, keeps its own position in the lyrics view.
+        if (lineAnchors[start + k]) continue;
         lineAnchors[start + k] = { centerY: top + sub * (k + 0.5), height: sub };
       }
     });
