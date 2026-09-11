@@ -234,6 +234,9 @@
   /// without waiting for the performer to send anything.
   let renderedSongTitle = '';
   let renderedBasedOnText = '';
+  /// The last render put the between-songs page up while the performer still
+  /// had a song loaded — so returning is a resume of that song, not a new one.
+  let renderedInterludeOverSong = false;
   applyZoom();
   applyChordsToggle();
 
@@ -1003,7 +1006,7 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
-  const TRACE_PAGE_VERSION = 48;
+  const TRACE_PAGE_VERSION = 49;
 
   if (debugEnabled) {
     const bar = document.createElement('div');
@@ -1269,6 +1272,12 @@
    *  list view (set list overview, songs tab, etc.) rather than a song. */
   const LIST_SENTINEL = '__list__';
 
+  /** Sentinel set by the iOS app in song_subtitle when the performer, with a
+   *  song on screen, has switched the audience to the between-songs page. It
+   *  rides on the row rather than a broadcast so a late joiner and the refetch
+   *  below both see it. The app clears it on the next song. */
+  const INTERLUDE_SENTINEL = '__interlude__';
+
   function applyRow(data) {
     // Live ticks are the authoritative real-time signal. If we've seen a tick
     // within the last ~8 s saying the host is in play mode, ignore any row
@@ -1335,7 +1344,18 @@
     /// list screen produces, a row with no title, no text and no list. That
     /// second case used to fall through to "Performer is between songs",
     /// which is precisely the moment the between-songs page is for.
-    const noSong = isList || !hasSongContent;
+    // The performer pressed "Web page" on a song: show them the between-songs
+    // page instead of it. Only with a URL — without one there is nothing to
+    // show, so the song stands.
+    const isInterlude = (data.song_subtitle === INTERLUDE_SENTINEL) && !!data.interlude_url;
+    const noSong = isList || isInterlude || !hasSongContent;
+    // Coming BACK to the same song. Treated like a late join (snap to where the
+    // performer is) rather than a song change (top of the page, then travel
+    // down) — the song never changed, the audience just looked away from it.
+    const resumingSong = !noSong && renderedInterludeOverSong &&
+                         data.song_raw_text === renderedSongRawText;
+    // The song's title has no business sitting above the between-songs page.
+    if (isInterlude) $title.textContent = ' ';
     masterTranspose = data.transpose_semitones || 0;
     // A sender from before these columns existed sends neither; 0/false is
     // the correct reading of "no capo information", and `capoShift()` is
@@ -1423,6 +1443,7 @@
         if (interludeURL) renderInterlude();
         else renderList(data.song_raw_text || '');
         $body.dataset.mode = 'list';
+        renderedInterludeOverSong = isInterlude;
         // Lists are static — show them from the top, not wherever the
         // previous song's scrollTop happened to leave us.
         $scroll.scrollTop = 0;
@@ -1433,6 +1454,7 @@
         renderedBasedOnText = basedOn.text;
         renderSong(data.song_raw_text || '', renderedSongTitle, renderedBasedOnText);
         $body.dataset.mode = 'song';
+        renderedInterludeOverSong = false;
       }
       renderedSongRawText = data.song_raw_text || '';
       // The bar's Follow control depends on the MODE, and the frame loop
@@ -1443,8 +1465,9 @@
       // A transpose-only re-render keeps the viewer's current position.
       rebuildLineAnchors();
       if (contentChanged) {
-        if (!hasReceivedFirstRow) {
-          // Initial join: snap to host's mid-song position so a late
+        if (!hasReceivedFirstRow || resumingSong) {
+          // Initial join, or back from the between-songs page: snap to the
+          // host's mid-song position so a late
           // joiner doesn't see the page race down from the top. The
           // row's elapsed may be stale (it only refreshes on song-
           // change writes), so re-snap on the first live tick too.
@@ -1470,7 +1493,7 @@
       }
     }
     // Show/hide the chord toggle — pointless in list mode.
-    $toggle.style.visibility = isList ? 'hidden' : 'visible';
+    $toggle.style.visibility = (isList || isInterlude) ? 'hidden' : 'visible';
 
     // Empty state: nothing to show at all. A configured between-songs page
     // IS something to show, so it takes precedence — otherwise the interlude
