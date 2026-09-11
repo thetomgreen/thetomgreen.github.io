@@ -1003,7 +1003,7 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
-  const TRACE_PAGE_VERSION = 45;
+  const TRACE_PAGE_VERSION = 46;
 
   if (debugEnabled) {
     const bar = document.createElement('div');
@@ -1150,6 +1150,17 @@
   let serverScrollFraction = null;     // non-null only when out of play mode
   let lastTickAt = 0;                  // performance.now() of last server tick
   let lastRowAt = 0;                   // performance.now() of last row event/refetch
+  /// Bumped by every LIVE row event (postgres_changes or the `row` broadcast),
+  /// never by the refetch. `loadInitial` compares it across its await: if a
+  /// row event landed mid-fetch, the fetched snapshot may be older, and
+  /// applying it would snap the audience back a song. A counter, not a
+  /// timestamp: coarse browser timers can tie, and an overlapping refetch
+  /// must not suppress the next one.
+  let rowEventSeq = 0;
+  function applyRowEvent(data) {
+    rowEventSeq += 1;
+    applyRow(data);
+  }
   // The row's expires_at is a 4-hour TTL that only gets bumped on row
   // WRITES (song change / list view / transpose change) — ticks don't
   // refresh it. So on a session that's been on the same song for >4 hours
@@ -1157,8 +1168,7 @@
   // Treat any activity (tick OR row event) within this window as proof
   // the session is alive, regardless of what expires_at says.
   const ACTIVITY_LIVE_WINDOW_MS = 90_000;  // 90s of silence ⇒ might be dead
-  function sessionLooksLive() {
-    const now = performance.now();
+  function sessionLooksLive(now = performance.now()) {
     return (now - lastTickAt) < ACTIVITY_LIVE_WINDOW_MS
         || (now - lastRowAt)  < ACTIVITY_LIVE_WINDOW_MS;
   }
@@ -1222,6 +1232,7 @@
   ].join(',');
 
   async function loadInitial() {
+    const seqAtIssue = rowEventSeq;
     try {
       const { data, error } = await supabase
         .from('share_sessions')
@@ -1240,7 +1251,11 @@
         setStatus('error', 'Not found');
         return;
       }
-      applyRow(data);
+      if (rowEventSeq !== seqAtIssue) {
+        bumpDebug('refetch', 'skipped — a live row arrived mid-fetch');
+      } else {
+        applyRow(data);
+      }
       rememberRecent(code);
       bumpDebug('refetch', 'sub=' + (data.song_subtitle ?? '∅'));
     } catch (e) {
@@ -1471,6 +1486,11 @@
   // no-jump slew behavior end-to-end.
   if (debugEnabled) {
     window.__applyRow = applyRow;
+    window.__applyRowEvent = applyRowEvent;
+    window.__loadInitial = loadInitial;
+    window.__getDotClass = () => $dot.className;
+    // Run the connection watchdog as if `aheadMs` had passed with no traffic.
+    window.__connectionWatchdogAfter = (aheadMs) => connectionWatchdogTick(performance.now() + aheadMs);
     window.__getScrollTop = () => $scroll.scrollTop;
     // The "based on …" credit now lives ONLY in the scrolling head block.
     window.__getSubtitle = () => {
@@ -1545,7 +1565,7 @@
       // of "Session ended", and — worse — `new Date(row.expires_at)` becomes an
       // Invalid Date, which makes BOTH branches of the expiry watchdog false
       // and disables it permanently. Require a real record.
-      if (payload.new && payload.new.id) applyRow(payload.new);
+      if (payload.new && payload.new.id) applyRowEvent(payload.new);
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') setStatus('live', 'Live');
@@ -1578,7 +1598,7 @@
     })
     .on('broadcast', { event: 'row' }, (msg) => {
       bumpDebug('row_bcast', 'sub=' + (msg.payload?.song_subtitle ?? '∅'));
-      if (msg.payload) applyRow(msg.payload);
+      if (msg.payload) applyRowEvent(msg.payload);
     })
     .on('broadcast', { event: 'debug' }, (msg) => {
       const p = msg.payload || {};
@@ -1594,15 +1614,19 @@
   setInterval(() => { loadInitial(); }, 20000);
 
   // Reconnect indicator. supabase-js auto-reconnects; we just notice the gap.
+  // Ticks are event-driven (no heartbeat), so 8 s without one during a
+  // normal song is expected — the old tick-age check flipped the dot amber
+  // all song, and the 20 s refetch flipped it back. Warn only when NOTHING
+  // (tick or row, and the refetch refreshes the row) has arrived for
+  // ACTIVITY_LIVE_WINDOW_MS while the performer was playing. Only ever
+  // downgrades from Live, so it never repaints 'Offline' / 'Ended'.
+  // `lastSeenTickAt` is still maintained by the render loop.
   let lastSeenTickAt = performance.now();
-  setInterval(() => {
-    const sinceTick = (performance.now() - lastSeenTickAt) / 1000;
-    if (sinceTick > 8 && serverPlaying) {
-      // Performer was playing but we haven't heard anything in 8s.
-      // Either they paused without telling us, or our WS dropped.
-      setStatus('warn', 'No recent updates');
-    }
-  }, 2000);
+  function connectionWatchdogTick(now = performance.now()) {
+    if (!$dot.classList.contains('live')) return;
+    if (serverPlaying && !sessionLooksLive(now)) setStatus('warn', 'No recent updates');
+  }
+  setInterval(() => connectionWatchdogTick(), 2000);
 
   loadInitial();
 
