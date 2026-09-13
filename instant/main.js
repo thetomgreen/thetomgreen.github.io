@@ -1830,6 +1830,19 @@
     return null;
   }
 
+  /// `$segue: <name>` — who introduces the NEXT song. Port of iOS
+  /// `SongTextHeuristics.segueName`. This is transition metadata for the
+  /// PERFORMER's own screen; the audience has no use for it and it is not part
+  /// of the chart, so the share view drops the line entirely. The colon is
+  /// required so an ordinary lyric can't be mistaken for a directive.
+  function segueName(raw) {
+    const p = prefixVisibility(raw);
+    if (!p || p.mode !== 'chords') return null;
+    if (!p.content.toLowerCase().startsWith('segue:')) return null;
+    const name = p.content.slice('segue:'.length).trim();
+    return name === '' ? null : name;
+  }
+
   /// Wrapped `# … #` annotation — the source-doc convention's "this belongs
   /// to the LYRICS version only" block (a performance note, a spoken aside,
   /// a scroll-spacing placeholder). Port of iOS
@@ -2253,6 +2266,10 @@
       // "$[Bridge]") gets the green-italic section treatment; anything else
       // is a plain lyric. `data-only-mode` drives the CSS that hides it in
       // the other view. (The `# ... #` wrapped form is not handled.)
+      // `$segue: <name>`: performer-only transition metadata, never shown to
+      // the audience. Dropped before the generic `$` branch below, which would
+      // otherwise render it as a chords-view lyric reading "segue: Dave".
+      if (segueName(cur.raw) !== null) { i += 1; continue; }
       const prefixed = prefixVisibility(cur.raw);
       if (prefixed) {
         frag.appendChild(prefixedLineElement(prefixed, i));
@@ -2295,7 +2312,11 @@
       //  • `$foo` (chords view only): the chords pair with `foo`, and the
       //    whole pair is chords-view-only.
       //  • a prefixed section header never takes chords.
-      const nextPrefixed = (cur.kind === 'chords' && next) ? prefixVisibility(next.raw) : null;
+      // A `$segue:` line is dropped, so it must never claim the chord line above
+      // it — otherwise those chords would be paired with (and hidden alongside)
+      // a line that isn't rendered at all.
+      const nextPrefixed = (cur.kind === 'chords' && next && segueName(next.raw) === null)
+        ? prefixVisibility(next.raw) : null;
       if (nextPrefixed) {
         const after = parsed[i + 2];
         if (nextPrefixed.mode === 'lyrics') {
