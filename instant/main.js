@@ -1571,6 +1571,9 @@
       chordText: (document.querySelector('.line.chords') || {}).textContent || '',
     });
     window.__setMasterFollow = (enabled) => applyMasterFollow(!!enabled);
+    // Rule B line classification, for the acceptance tables in the spec.
+    window.__classify = (line) => classify(line);
+    window.__parseLine = (line) => { const p = parseLine(line); return { text: p.raw, kind: p.kind, literal: p.literal }; };
   }
 
   // Subscribe to row-level changes (song switches, start/stop).
@@ -1655,10 +1658,37 @@
   loadInitial();
 
   // -------------------------------------------------------------------
-  // Render: chord/lyric line classification (port of iOS ChordParser)
+  // Render: chord/lyric line classification — RULE B, shared with the
+  // songbook picker (`~/Lyrics versions from chords/songbook/chords.py`,
+  // the source of truth) and the iOS ChordParser. The three ports must stay
+  // identical: a line one of them calls a chord line and another calls a
+  // lyric paints blue on one screen and plain on the next, and gets
+  // transposed on one and not the other.
   // -------------------------------------------------------------------
-  const CHORD_RE = /^(?:NC|N\.C\.|[A-G](?:#|b)?(?:maj|min|m|dim|aug|sus|add|Maj|Min|Add|Sus|Dim|Aug|MAJ|MIN|ADD|SUS|DIM|AUG)?\d*(?:\/[A-G](?:#|b)?)?)$/;
+  // Qualities and digit groups may REPEAT in any order, so `E7sus`, `C7sus4`
+  // and `Gsus2-4` are chords. The old one-quality-then-digits form rejected
+  // `E7sus`, which turned all 18 chord lines of Whip-It Used into lyrics.
+  const CHORD_RE = /^(?:NC|N\.C\.|[A-G](?:#|b)?(?:(?:maj|min|m|dim|aug|sus|add|Maj|Min|Add|Sus|Dim|Aug|MAJ|MIN|ADD|SUS|DIM|AUG)|\d+(?:-\d+)*)*(?:\/[A-G](?:#|b)?)?)$/;
   const TRIM_PUNCT = /^[.,;:!?*()\[\]"'-]+|[.,;:!?*()\[\]"'-]+$/g;
+  // Repeat markers ride along with a progression ("G  D  Am  C  x4", "D x2",
+  // "4x", "(x2)" once trimmed). Part of the chord line, but neither a chord
+  // nor evidence against one — so "I have x2 things to say" still has no
+  // chord to be a chord line with.
+  const REPEAT_RE = /^(?:[x×]\s*\d+|\d+\s*[x×])$/i;
+  // Quote wrap = forced lyric (rule B step 3). Straight or curly, and mixed
+  // within a style (Google Docs' smart quotes don't guarantee a matching
+  // pair) — but never a single-quote opener with a double-quote closer.
+  // `.+` needs something inside, so a bare `''` is not a wrap. Same regex as
+  // the picker's `_FORCE_LYRIC_QUOTED_RE`.
+  const QUOTE_WRAP_RE = /^\s*(?:['‘’](.+)['‘’]|["“”](.+)["“”])\s*$/;
+  // A dropped-g ending ("peakin’", "runnin'") ends in an APOSTROPHE, so a
+  // leading ‘ on that line isn't a wrap either: "‘Lectrolytes, yeah my
+  // paranoia’s peakin’" is a plain lyric, shown as typed. `\p{L}\p{N}_` is
+  // Python's Unicode `\w`; JS's own `\w` is ASCII-only.
+  const DROPPED_G_END_RE = /[\p{L}\p{N}_]in['‘’]\s*$/iu;
+  // `*` force-chord prefix. `(?!\*)` matches the picker: `**foo` is not a
+  // force marker.
+  const FORCE_CHORD_RE = /^\s*\*(?!\*)/;
 
   // -------------------------------------------------------------------
   // Chord transposition — JS port of iOS ChordTransposer.swift. Shifts a
@@ -1711,17 +1741,14 @@
   }
 
   /** Transpose a whole chord-only line, preserving each chord's start column
-   *  (chord-only lines render in column alignment with no lyric beneath). */
+   *  (chord-only lines render in column alignment with no lyric beneath).
+   *  Only tokens rule B counts as chords move — see `transposePiece`. The
+   *  rendered lines use `chordLineSegments`, which also carries the styling;
+   *  this is its plain-string form. */
   function transposeChordLineString(raw, semitones) {
     if (!semitones) return raw;
-    const tokens = tokenizeChordLineFull(raw);
-    if (tokens.length === 0) return raw;
-    let out = '';
-    for (const t of tokens) {
-      if (out.length < t.col) out += ' '.repeat(t.col - out.length);
-      out += transposeChord(t.text, semitones);
-    }
-    return out;
+    const segs = chordLineSegments(raw, semitones);
+    return segs.length === 0 ? raw : segs.map(s => s.text).join('');
   }
 
   // -------------------------------------------------------------------
@@ -1925,7 +1952,7 @@
     const out = new Set();
     if (firstChord < 0) return out;
     for (let i = 0; i < firstChord; i++) {
-      if (parsed[i].kind !== 'lyrics') continue;
+      if (parsed[i].kind !== 'lyrics' || parsed[i].literal) continue;
       const lower = parsed[i].raw.trim().toLowerCase();
       const isVersion = lower.includes('version');
       const isBy = lower === 'by' || lower.startsWith('by ') || lower.startsWith('by:');
@@ -1947,7 +1974,7 @@
     const out = new Set();
     if (firstChord < 0) return out;
     for (let i = 0; i < firstChord; i++) {
-      if (parsed[i].kind !== 'lyrics') continue;
+      if (parsed[i].kind !== 'lyrics' || parsed[i].literal) continue;
       const lower = parsed[i].raw.trim().toLowerCase();
       if (lower.startsWith('based on') || lower.startsWith('based upon') ||
           lower.startsWith('parody of')) out.add(i);
@@ -1955,63 +1982,200 @@
     return out;
   }
 
-  /** Returns 'chords' | 'lyrics' | 'blank' | 'section'. */
-  function classify(line) {
-    const trimmed = line.trim();
-    if (trimmed === '') return 'blank';
-    // Section headers — bracketed plus the broader iOS heuristic
-    // (Verse/Chorus/Pre-chorus/... with tags, parens, or trailing colon).
-    if (isSectionHeader(trimmed)) return 'section';
+  /// Per-line override markers, applied before counting (rule B steps 3–4).
+  /// Returns { text, forced, literal }:
+  ///  • `'…'` single-quote wrap — a FORCED LYRIC; the quotes are markup, so
+  ///    `text` has them stripped. Not for a dropped-g ending (see above).
+  ///  • `"…"` double-quote wrap — SPEECH; forced lyric, quotes KEPT.
+  ///  • leading `*` — FORCED CHORDS; that one `*` becomes a space so every
+  ///    other column (and the chord-over-syllable alignment) stays put.
+  /// `literal` marks a quote wrap: it is exempt from the `#`/`$` prefix rules,
+  /// the `# … #` annotation, and the metadata/attribution heuristics — a
+  /// forced lyric exists precisely to stop the text being read as anything
+  /// else.
+  function lineMarkers(line) {
+    const q = QUOTE_WRAP_RE.exec(line);
+    if (q && !(q[1] !== undefined && DROPPED_G_END_RE.test(line))) {
+      const trimmed = line.trim();
+      const text = q[1] !== undefined ? trimmed.slice(1, -1) : trimmed;
+      return { text, forced: 'lyrics', literal: true };
+    }
+    const star = FORCE_CHORD_RE.exec(line);
+    if (star) {
+      const at = star[0].length - 1;
+      return { text: line.slice(0, at) + ' ' + line.slice(at + 1), forced: 'chords', literal: false };
+    }
+    return { text: line, forced: null, literal: false };
+  }
 
-    // Tokenize; collapse "(...)" groups to one token.
-    const tokens = [];
+  /// Characters between `(` and its matching `)`, inclusive. An unclosed `(`
+  /// masks to the end of the line. Port of the picker's `_paren_mask`.
+  function parenMask(line) {
+    const mask = new Array(line.length).fill(false);
+    let depth = 0;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '(') { depth += 1; mask[i] = true; }
+      else if (ch === ')') { mask[i] = true; if (depth > 0) depth -= 1; }
+      else if (depth > 0) mask[i] = true;
+    }
+    return mask;
+  }
+
+  /// Split a line into whitespace tokens (spaces AND tabs — several charts
+  /// tab between chords) and flag each by rule B. Per TOKEN, not per paren
+  /// group: `Keys intro (G/C G/B G/F G/F)` is four counted chords against two
+  /// words, and `F(1 str)   D` ignores `F(1` and `str)` and counts `D`. The
+  /// old page collapsed a `(…)` group into ONE counted non-chord token, so
+  /// `G (C)` lost 1 vs 1 and every such line rendered as a lyric.
+  ///  • counted — a chord, parenthesised or not. Counts, and is transposed.
+  ///  • nonChord — a word outside parens. Counts against the line.
+  ///  • styled — painted as chord text on a chord line: everything except a
+  ///    parenthesised token that isn't a chord (`(damped)`, `(chorus)` stay in
+  ///    body style; `x4`, `Picked`, `(C)` are styled). The picker's
+  ///    `chord_line_ranges`.
+  /// A repeat marker is neither counted nor a non-chord word.
+  function scanTokens(line) {
+    const mask = parenMask(line);
+    const out = [];
     let i = 0;
     while (i < line.length) {
-      if (line[i] === ' ' || line[i] === '\t') { i++; continue; }
-      if (line[i] === '(') {
-        const start = i;
-        while (i < line.length && line[i] !== ')') i++;
-        if (i < line.length) i++;
-        while (i < line.length && line[i] !== ' ' && line[i] !== '\t') i++;
-        tokens.push({ text: line.slice(start, i), isChord: false });
-        continue;
-      }
+      if (/\s/.test(line[i])) { i++; continue; }
       const start = i;
-      while (i < line.length && line[i] !== ' ' && line[i] !== '\t') i++;
-      const tok = line.slice(start, i);
-      const stripped = tok.replace(TRIM_PUNCT, '');
-      tokens.push({ text: tok, isChord: stripped !== '' && CHORD_RE.test(stripped) });
+      while (i < line.length && !/\s/.test(line[i])) i++;
+      const text = line.slice(start, i);
+      const core = text.replace(TRIM_PUNCT, '');
+      let inParens = false;
+      for (let k = start; k < i; k++) if (mask[k]) { inParens = true; break; }
+      const repeat = core !== '' && REPEAT_RE.test(core);
+      const chordLike = core !== '' && CHORD_RE.test(core);
+      out.push({
+        col: start, text,
+        counted: !repeat && chordLike,
+        nonChord: !repeat && !inParens && !chordLike,
+        styled: !inParens || chordLike,
+      });
     }
-    const chords = tokens.filter(t => t.isChord).length;
-    const extras = tokens.length - chords;
+    return out;
+  }
+
+  /// { raw, source, kind, literal } for one source line. `raw` is the text
+  /// the rest of the renderer works from — marker-stripped (`'…'` quotes
+  /// gone, a forcing `*` turned into a space) — and `source` the line as
+  /// typed.
+  function parseLine(source) {
+    const trimmed = source.trim();
+    if (trimmed === '') return { raw: source, source, kind: 'blank', literal: false };
+    // Section headers — bracketed plus the broader iOS heuristic
+    // (Verse/Chorus/Pre-chorus/... with tags, parens, or trailing colon).
+    // First, ahead of the markers, as rule B orders it.
+    if (isSectionHeader(trimmed)) return { raw: source, source, kind: 'section', literal: false };
+    const m = lineMarkers(source);
+    if (m.forced === 'lyrics') return { raw: m.text, source, kind: 'lyrics', literal: true };
+    const tokens = scanTokens(m.text);
+    const chords = tokens.filter(t => t.counted).length;
+    const words = tokens.filter(t => t.nonChord).length;
+    // `*` skips the majority gate: "*Drums, F" is 1 vs 1 and "*G(1 str)"
+    // counts nothing at all, yet the performer marked both as chord lines.
+    if (m.forced === 'chords') return { raw: m.text, source, kind: 'chords', literal: false };
     // STRICT majority, matching `ChordParser` on the device. A tie is a
     // lyric: "Key: G" is one chord token against one word, and reading it as
     // a chord line both painted it blue and TRANSPOSED it, so a capo song's
     // metadata announced the wrong key.
-    return (chords > 0 && chords > extras) ? 'chords' : 'lyrics';
+    const kind = (chords > 0 && chords > words) ? 'chords' : 'lyrics';
+    return { raw: m.text, source, kind, literal: false };
   }
 
-  /** Tokenise a chord line into [{col, text}] preserving column positions.
-   *  Used by renderChordLyricPair so the rendered chord-over-syllable
-   *  alignment matches the host's source spacing. */
+  /** Returns 'chords' | 'lyrics' | 'blank' | 'section'. */
+  function classify(line) {
+    return parseLine(line).kind;
+  }
+
+  /** Tokenise a chord line into [{col, text, pieces}] preserving column
+   *  positions. Used by renderChordLyricPair so the rendered
+   *  chord-over-syllable alignment matches the host's source spacing.
+   *
+   *  A `(…)` group stays ONE display token, exactly as before rule B, so a
+   *  note like `(1 strum let ring)` still hangs over one syllable instead of
+   *  spreading a word across each — the pairing layout of every chart is
+   *  unchanged. What rule B changes is INSIDE the token: `pieces` are its
+   *  whitespace tokens from `scanTokens`, each carrying its own
+   *  styled/counted flags, so `(C7 damped)` paints and transposes `C7` and
+   *  leaves `damped` alone. */
   function tokenizeChordLineFull(line) {
+    const scanned = scanTokens(line);
     const out = [];
     let i = 0;
     while (i < line.length) {
-      if (line[i] === ' ' || line[i] === '\t') { i++; continue; }
+      if (/\s/.test(line[i])) { i++; continue; }
+      const start = i;
       if (line[i] === '(') {
-        const start = i;
         while (i < line.length && line[i] !== ')') i++;
         if (i < line.length) i++;
-        while (i < line.length && line[i] !== ' ' && line[i] !== '\t') i++;
-        out.push({ col: start, text: line.slice(start, i) });
-        continue;
       }
-      const start = i;
-      while (i < line.length && line[i] !== ' ' && line[i] !== '\t') i++;
-      out.push({ col: start, text: line.slice(start, i) });
+      while (i < line.length && !/\s/.test(line[i])) i++;
+      const pieces = scanned.filter(t => t.col >= start && t.col < i);
+      out.push({ col: start, text: line.slice(start, i), pieces });
     }
     return out;
+  }
+
+  /// Transpose one scanned token if rule B counts it as a chord, keeping any
+  /// punctuation around it — `(C)` becomes `(D)` up a tone, parentheses kept.
+  /// `x4`, `(damped)` and a word like `Drums,` are never touched (the old page
+  /// transposed any token that started A–G, so "Drums," read "Erums,").
+  function transposePiece(piece, semitones) {
+    if (!semitones || !piece.counted) return piece.text;
+    const lead = piece.text.match(/^[.,;:!?*()\[\]"'-]*/)[0];
+    const rest = piece.text.slice(lead.length);
+    const trail = rest.match(/[.,;:!?*()\[\]"'-]*$/)[0];
+    const core = rest.slice(0, rest.length - trail.length);
+    return lead + transposeChord(core, semitones) + trail;
+  }
+
+  /// Lay a run of display tokens out as [{text, styled}] segments, starting
+  /// at source column `baseCol`, transposed. Each token/piece is padded back
+  /// to its source column (the chart's shape); when transposition has grown
+  /// what came before (C → C#), at least one space is kept so neighbours
+  /// can't fuse into "C#D".
+  function chordSegments(tokens, baseCol, semitones) {
+    const segs = [];
+    let len = 0;
+    const push = (text, styled) => { segs.push({ text, styled }); len += text.length; };
+    for (const tok of tokens) {
+      for (const piece of tok.pieces) {
+        const rel = piece.col - baseCol;
+        const gap = segs.length === 0 ? Math.max(0, rel - len) : Math.max(1, rel - len);
+        if (gap > 0) push(' '.repeat(gap), true);
+        push(transposePiece(piece, semitones), piece.styled);
+      }
+    }
+    return segs;
+  }
+
+  /// Fill an element with chord segments. Styled text is a plain text node
+  /// (the container carries the chord colour); an unstyled piece — a
+  /// parenthesised note such as `(damped)` — is wrapped in `.chord-note`,
+  /// which reads as body text. `textContent` is unchanged by the spans.
+  function fillChordSegments(el, segs) {
+    el.replaceChildren();
+    for (const s of segs) {
+      if (s.styled) {
+        const last = el.lastChild;
+        if (last && last.nodeType === Node.TEXT_NODE) last.textContent += s.text;
+        else el.appendChild(document.createTextNode(s.text));
+      } else {
+        const span = document.createElement('span');
+        span.className = 'chord-note';
+        span.textContent = s.text;
+        el.appendChild(span);
+      }
+    }
+  }
+
+  /// A whole chord line as styled, transposed segments.
+  function chordLineSegments(raw, semitones) {
+    return chordSegments(tokenizeChordLineFull(raw), 0, semitones);
   }
 
   /** Render a chord+lyric pair as a single block of inline syllables.
@@ -2031,14 +2195,19 @@
     // same height and their lyric baselines align horizontally. Without
     // this, chordless syllables float 1em higher than their chord-bearing
     // siblings on the same visual line.
-    const makeSyl = (chordText, lyricText, isRun) => {
+    //
+    // `chordSegs` is a `chordSegments` array (null for no chord), so a
+    // parenthesised note riding in the chord slot — `(damped)` — keeps body
+    // style while the chords around it are painted.
+    const makeSyl = (chordSegs, lyricText, isRun) => {
       const syl = document.createElement('span');
       syl.className = 'syl';
       const ch = document.createElement('span');
-      ch.className = chordText
+      ch.className = chordSegs
         ? (isRun ? 'syl-chord syl-chord-run' : 'syl-chord')
         : 'syl-chord syl-chord-empty';
-      ch.textContent = chordText || ' ';
+      if (chordSegs) fillChordSegments(ch, chordSegs);
+      else ch.textContent = ' ';
       syl.appendChild(ch);
       const ly = document.createElement('span');
       ly.className = 'syl-lyric';
@@ -2051,9 +2220,9 @@
     // column) as per-word inline-block syllables separated by real text-node
     // spaces. Per-word splitting is what makes the line wrap on narrow
     // viewports: each .syl is atomic, so wrap only happens between them.
-    const appendChunk = (chordText, chunk) => {
+    const appendChunk = (chordSegs, chunk) => {
       if (chunk.length === 0) {
-        if (chordText) pair.appendChild(makeSyl(chordText, ''));
+        if (chordSegs) pair.appendChild(makeSyl(chordSegs, ''));
         return;
       }
       const parts = chunk.split(/(\s+)/).filter(s => s.length > 0);
@@ -2062,18 +2231,18 @@
         if (/^\s+$/.test(part)) {
           pair.appendChild(document.createTextNode(part));
         } else {
-          const useChord = !assignedChord ? (chordText || '') : '';
+          const useChord = !assignedChord ? (chordSegs || null) : null;
           assignedChord = true;
           pair.appendChild(makeSyl(useChord, part));
         }
       }
-      if (!assignedChord && chordText) {
-        pair.appendChild(makeSyl(chordText, ''));
+      if (!assignedChord && chordSegs) {
+        pair.appendChild(makeSyl(chordSegs, ''));
       }
     };
 
     if (tokens.length === 0) {
-      appendChunk('', lyricRaw);
+      appendChunk(null, lyricRaw);
       return pair;
     }
 
@@ -2111,7 +2280,7 @@
       pair.classList.add('chord-row-pair');
       const chordRow = document.createElement('div');
       chordRow.className = 'line chords chord-row';
-      chordRow.textContent = transposeChordLineString(chordRaw, currentTranspose);
+      fillChordSegments(chordRow, chordLineSegments(chordRaw, currentTranspose));
       const lyricRow = document.createElement('div');
       lyricRow.className = 'line lyric chord-row-lyric';
       lyricRow.textContent = lyricRaw.length > 0 ? lyricRaw : ' ';
@@ -2120,7 +2289,7 @@
     }
 
     if (tokens[0].col > 0) {
-      appendChunk('', lyricRaw.substring(0, tokens[0].col));
+      appendChunk(null, lyricRaw.substring(0, tokens[0].col));
     }
     for (let k = 0; k < tokens.length; k++) {
       const tok = tokens[k];
@@ -2133,23 +2302,17 @@
         // once one runs off the end they all do. Emitting them as separate
         // empty syllables butts them together ("DAmCx4"). Instead emit the
         // whole tail as ONE monospace segment that reproduces the source
-        // column gaps (same padding rule as transposeChordLineString), so
+        // column gaps (same padding rule as chordLineSegments), so
         // "G     D   Am  C  x4" keeps the chart's shape. The gaps are drawn
         // in the chord font, so they're column-exact within the run; and
         // because the run lives in a .syl-chord it vanishes cleanly in
         // chords-off mode instead of leaving a hole in the lyric.
-        const runStart = tok.col;
-        let runText = '';
-        for (let j = k; j < tokens.length; j++) {
-          const rel = tokens[j].col - runStart;
-          if (runText.length < rel) runText += ' '.repeat(rel - runText.length);
-          runText += transposeChord(tokens[j].text, currentTranspose);
-        }
+        const runSegs = chordSegments(tokens.slice(k), tok.col, currentTranspose);
         if (pair.lastChild) pair.appendChild(document.createTextNode(' '));
-        pair.appendChild(makeSyl(runText, '', true));
+        pair.appendChild(makeSyl(runSegs, '', true));
         break;
       }
-      appendChunk(transposeChord(tok.text, currentTranspose), sub);
+      appendChunk(chordSegments([tok], tok.col, currentTranspose), sub);
     }
     return pair;
   }
@@ -2194,13 +2357,18 @@
     div.className = 'line chords';
     div.dataset.rawLineStart = String(rawIndex);
     div.dataset.rawLineEnd = String(rawIndex);
-    div.textContent = transposeChordLineString(raw, currentTranspose);
+    fillChordSegments(div, chordLineSegments(raw, currentTranspose));
     return div;
   }
 
   function renderSong(rawText, title, basedOnText) {
     const rawLines = rawText.split('\n');
-    const parsed = rawLines.map(raw => ({ raw, kind: classify(raw) }));
+    // `raw` is marker-stripped (see `parseLine`); `literal` marks a quote
+    // wrap, which none of the prefix / annotation / metadata rules may read.
+    const parsed = rawLines.map(parseLine);
+    const prefixOf = (p) => (p && !p.literal) ? prefixVisibility(p.raw) : null;
+    const segueOf = (p) => (p && !p.literal) ? segueName(p.raw) : null;
+    const annotationOf = (p) => (p && !p.literal) ? hashAnnotationContent(p.raw) : null;
     const frag = document.createDocumentFragment();
     if (title || basedOnText || songCapo) {
       const head = document.createElement('div');
@@ -2259,6 +2427,9 @@
         // "Leading" means before any LINE — the scrolling heading doesn't
         // count, or a song whose text starts with a blank would gain a gap
         // under the title that the iOS player doesn't show.
+        // That holds for the CHORDS view only. The LYRICS view always gets a
+        // blank above its first lyric — including at the very top, under the
+        // title — which `insertBlankBeforeFirstLyric` adds after this loop.
         if (!frag.querySelector('[data-raw-line-start]')) { i += 1; continue; }
       }
       // Single `#`/`$` visibility-prefix line: shown in only one mode. A
@@ -2269,8 +2440,8 @@
       // `$segue: <name>`: performer-only transition metadata, never shown to
       // the audience. Dropped before the generic `$` branch below, which would
       // otherwise render it as a chords-view lyric reading "segue: Dave".
-      if (segueName(cur.raw) !== null) { i += 1; continue; }
-      const prefixed = prefixVisibility(cur.raw);
+      if (segueOf(cur) !== null) { i += 1; continue; }
+      const prefixed = prefixOf(cur);
       if (prefixed) {
         frag.appendChild(prefixedLineElement(prefixed, i));
         i += 1;
@@ -2281,7 +2452,7 @@
       // view with the `#` markers stripped, and dropped in the chords view
       // — along with the chord line directly above it, which belongs to the
       // block being annotated (the source-doc rule the iOS player follows).
-      const annotation = hashAnnotationContent(cur.raw);
+      const annotation = annotationOf(cur);
       if (annotation !== null) {
         const prev = frag.lastElementChild;
         if (prev && prev.classList.contains('chords')) {
@@ -2297,6 +2468,9 @@
           div.dataset.rawLineStart = String(i);
           div.dataset.rawLineEnd = String(i);
           div.dataset.onlyMode = 'lyrics';
+          // A direction, not a label: the lyrics-view blank above the first
+          // lyric steps back over a section label but never over this.
+          div.dataset.annotation = 'true';
           div.textContent = annotation;
           frag.appendChild(div);
         }
@@ -2309,19 +2483,22 @@
       // line showed in the chords view. Mirror the iOS player instead:
       //  • `#foo` (lyrics view only): the chords view drops it, so the chord
       //    line pairs with the lyric AFTER it; the lyrics view shows `foo`.
-      //  • `$foo` (chords view only): the chords pair with `foo`, and the
-      //    whole pair is chords-view-only.
+      //  • `$foo` (chords view only): NEVER pairs. It is a note to the
+      //    musicians, not a lyric, so it doesn't claim the chord line above:
+      //    the chords stand alone and `foo` follows on its own line, in
+      //    source order (the prefix branch renders it on the next pass). This
+      //    used to hang the chords over `foo` as a chords-only pair.
       //  • a prefixed section header never takes chords.
       // A `$segue:` line is dropped, so it must never claim the chord line above
       // it — otherwise those chords would be paired with (and hidden alongside)
       // a line that isn't rendered at all.
-      const nextPrefixed = (cur.kind === 'chords' && next && segueName(next.raw) === null)
-        ? prefixVisibility(next.raw) : null;
+      const nextPrefixed = (cur.kind === 'chords' && segueOf(next) === null)
+        ? prefixOf(next) : null;
       if (nextPrefixed) {
         const after = parsed[i + 2];
         if (nextPrefixed.mode === 'lyrics') {
-          if (after && after.kind === 'lyrics' && !prefixVisibility(after.raw)
-              && hashAnnotationContent(after.raw) === null) {
+          if (after && after.kind === 'lyrics' && !prefixOf(after)
+              && annotationOf(after) === null) {
             // DOM order follows the lyrics view (the `#` line comes first).
             // The pair's range (i..i+2) overlaps the `#` line's (i+1);
             // `rebuildLineAnchors` keeps the first claim on a line.
@@ -2338,17 +2515,8 @@
           }
           continue;
         }
-        if (!isSectionHeader(nextPrefixed.content)) {
-          const pair = renderChordLyricPair(cur.raw, nextPrefixed.content);
-          pair.dataset.rawLineStart = String(i);
-          pair.dataset.rawLineEnd = String(i + 1);
-          pair.dataset.onlyMode = 'chords';
-          frag.appendChild(pair);
-          i += 2;
-          continue;
-        }
-        // `$[Header]` under a chord line: the chord line stands alone; the
-        // header is rendered by the prefix branch on the next pass.
+        // `$foo` / `$[Header]` under a chord line: the chord line stands
+        // alone; the `$` line is rendered by the prefix branch next pass.
         frag.appendChild(chordLineElement(cur.raw, i));
         i += 1;
         continue;
@@ -2356,9 +2524,12 @@
       // Pair a chord line with the lyric line immediately under it — but
       // never with a `# … #` annotation. Those are directions, not words to
       // hang chords over, and pairing consumed the annotation here before
-      // the branch above could hide it.
+      // the branch above could hide it. Nor with a `$segue:` line, which the
+      // branch above deliberately passes over: pairing took the RAW
+      // "$segue: Dave" as the lyric, so the audience read the directive
+      // under the chords. The chords stand alone and the segue stays hidden.
       if (cur.kind === 'chords' && next && next.kind === 'lyrics'
-          && hashAnnotationContent(next.raw) === null) {
+          && annotationOf(next) === null && segueOf(next) === null) {
         const pair = renderChordLyricPair(cur.raw, next.raw);
         pair.dataset.rawLineStart = String(i);
         pair.dataset.rawLineEnd = String(i + 1);
@@ -2374,13 +2545,13 @@
           // headers arrive as `$[…]` and are handled by the prefix path above.
           div.textContent = sectionDisplayInfo(cur.raw).text || ' ';
         } else if (cur.kind === 'chords') {
-          div.textContent = transposeChordLineString(cur.raw, currentTranspose);
+          fillChordSegments(div, chordLineSegments(cur.raw, currentTranspose));
         } else {
           div.textContent = cur.kind === 'blank' ? ' ' : cur.raw;
           // "Key: G", "Capo 2", "Tuning: DADGAD" -- chart furniture for the
           // player, noise for someone reading the words. Chords view only,
           // same as the iOS player.
-          if (cur.kind === 'lyrics' && isMetadataLine(cur.raw)) {
+          if (cur.kind === 'lyrics' && !cur.literal && isMetadataLine(cur.raw)) {
             div.dataset.onlyMode = 'chords';
           }
         }
@@ -2388,7 +2559,58 @@
         i += 1;
       }
     }
+    insertBlankBeforeFirstLyric(frag);
     $body.replaceChildren(frag);
+  }
+
+  /// Lyrics view only: guarantee a blank line directly above the song's first
+  /// lyric, adding one if the source has none (Tom's rule, shared with the
+  /// picker's `_blank_before_first_lyric`). Both views are rendered at once,
+  /// so this works on what the LYRICS view will show: anything
+  /// `data-only-mode="chords"` and every standalone chord line is invisible
+  /// there and is looked straight past.
+  ///  • The first lyric is a lyric line (not an attribution credit) or a
+  ///    chord pair — in the lyrics view a pair IS its lyric. Lyric lines carry
+  ///    `lyric` from the prefix/attribution builders but `lyrics` (the kind)
+  ///    from the generic branch, so both are accepted.
+  ///  • A section label sitting directly on it keeps it company: the blank
+  ///    goes above the label. Not a `# … #` direction, which is not a label.
+  ///  • Never doubled: a blank already there (under a "Based on" credit, say)
+  ///    is left alone.
+  ///  • At the very top of the song the blank separates the lyrics from the
+  ///    title block — the one place this knowingly overrides the renderer's
+  ///    "drop leading blanks", and in the lyrics view only. The inserted line
+  ///    is `data-only-mode="lyrics"`, so the chords view never sees it, and it
+  ///    carries no `data-raw-line-start`, so it claims no line anchor.
+  function insertBlankBeforeFirstLyric(frag) {
+    const shownInLyrics = (el) => el.classList.contains('line')
+      && el.dataset.onlyMode !== 'chords'
+      && !(el.classList.contains('chords') && !el.classList.contains('chord-pair'));
+    const els = [...frag.children];
+    const first = els.findIndex(el => shownInLyrics(el)
+      && (((el.classList.contains('lyric') || el.classList.contains('lyrics'))
+           && !el.classList.contains('attribution'))
+          || el.classList.contains('chord-pair')));
+    if (first < 0) return;
+    // The nearest line above `from` that the lyrics view shows, or null.
+    const shownBefore = (from) => {
+      for (let k = from - 1; k >= 0; k--) {
+        if (!els[k].classList.contains('line')) return null;   // the song heading
+        if (shownInLyrics(els[k])) return k;
+      }
+      return null;
+    };
+    let at = first;
+    const above = shownBefore(at);
+    if (above !== null && els[above].classList.contains('section')
+        && els[above].dataset.annotation !== 'true') at = above;
+    const prev = shownBefore(at);
+    if (prev !== null && els[prev].classList.contains('blank')) return;
+    const blank = document.createElement('div');
+    blank.className = 'line blank';
+    blank.dataset.onlyMode = 'lyrics';
+    blank.textContent = ' ';
+    frag.insertBefore(blank, els[at]);
   }
 
   /// "Between songs" page.

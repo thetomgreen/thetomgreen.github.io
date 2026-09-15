@@ -475,6 +475,17 @@ button#toggle-play { min-width: 3.4rem; }
  * reserved space so lyric lines pack normally. */
 .song-body[data-show-chords="false"] .syl-chord { display: none; }
 
+/* A parenthesised note riding on a chord line — `(damped)`, `(chorus)`,
+ * `(1 strum let ring)` — is not a chord, so rule B leaves it in BODY style:
+ * lyric colour, normal weight. It keeps the chord font, though, because the
+ * font is what holds the line's columns; only colour and weight are chord
+ * styling. Parenthesised CHORDS (`(C)`, `(Am Bb)`) are not wrapped, so they
+ * stay painted. Applies to standalone lines, the chord row and syllables. */
+.chord-note {
+  color: #f5f5f5;
+  font-weight: 400;
+}
+
 /* Empty state (host has no active song / row got cleared) */
 .empty-state {
   text-align: center;
