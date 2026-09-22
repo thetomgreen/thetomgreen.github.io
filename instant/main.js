@@ -520,6 +520,10 @@
     // releases itself on arrival.
     repositioning = true;
     needSnap = false;
+    // Every path that changes the follow state repaints it. This one is
+    // reached from the master's play edge and from the master re-enabling
+    // follower tracking, neither of which went through the button.
+    applyFollowToggle();
   }
 
   /// Adopt the performer's "Followers track my position" switch, from either
@@ -563,6 +567,11 @@
     const on = effectivelyFollowing();
     if (on !== renderedFollowOn) {
       $toggleFollow.setAttribute('aria-pressed', on ? 'true' : 'false');
+      // The label says what the button DOES, not what the state is: while
+      // following, the only thing it can do is let you go. Grey "Release"
+      // while following, blue "Follow" once released — see the CSS, which
+      // keys off the same `aria-pressed`.
+      $toggleFollow.textContent = on ? 'Release' : 'Follow';
       // Greyed while following (you are already following — the banner beside
       // it says how to leave), blue when released, where tapping it is the
       // action to take. Styling only, via `aria-pressed`: the button stays
@@ -640,7 +649,6 @@
       // Session-only: intentionally not written to localStorage — see the
       // declaration of `trackingEnabled`.
       trackingEnabled = !effectivelyFollowing();
-      applyFollowToggle();
       if (trackingEnabled) {
         // Re-engaging: snap on the next frame so the viewer lands on the
         // performer's current position instead of slewing across the song.
@@ -655,6 +663,12 @@
         lastAppliedScrollTop = $scroll.scrollTop;
         safeElapsed = liveElapsed(performance.now());
       }
+      // Rendered LAST, once the state is settled. It used to run before
+      // `reattachToMaster()` cleared `detachedDuringSong`, so the tap that
+      // re-attached you painted "Released from follow" in blue and only
+      // corrected itself on the next frame — which is the inverted button
+      // that was reported.
+      applyFollowToggle();
     });
   }
 
@@ -709,10 +723,39 @@
     applyFollowToggle();
   }
   $scroll.addEventListener('wheel', noteManualScroll, { passive: true });
+  /// Where the page was when the finger went down, and whether a pinch is in
+  /// progress. Both exist to stop a touch that moves NOTHING from releasing
+  /// the viewer.
+  let touchStartScrollTop = null;
+  let pinchActive = false;
+  $scroll.addEventListener('touchstart', (e) => {
+    touchStartScrollTop = $scroll.scrollTop;
+    if (e.touches && e.touches.length > 1) pinchActive = true;
+  }, { passive: true });
+  $scroll.addEventListener('touchend', (e) => {
+    // Only once every finger is off: a pinch commonly ends one finger at a
+    // time, and the gap between the two lifts is precisely when the stray
+    // one-finger `touchmove` used to arrive.
+    if (!e.touches || e.touches.length === 0) {
+      pinchActive = false;
+      touchStartScrollTop = null;
+    }
+  }, { passive: true });
   $scroll.addEventListener('touchmove', (e) => {
     // 2-finger touchmove is pinch-zoom, handled by the gesture block
     // above — never a scroll.
-    if (e.touches && e.touches.length === 1) noteManualScroll();
+    if (!e.touches || e.touches.length !== 1) return;
+    // The tail of a pinch, after one finger has lifted. It reads as a
+    // one-finger drag and used to release the viewer permanently — zooming
+    // the text is not asking to stop following.
+    if (pinchActive) return;
+    // The page has to have actually MOVED. A rubber-band overscroll at the
+    // top or bottom of the song is a finger dragging with `scrollTop` pinned
+    // at its clamp, and iOS produces a lot of them; treating those as "let
+    // me read at my own pace" released viewers who had done no such thing.
+    if (touchStartScrollTop !== null &&
+        Math.abs($scroll.scrollTop - touchStartScrollTop) <= USER_SCROLL_TOLERANCE_PX) return;
+    noteManualScroll();
   }, { passive: true });
   document.addEventListener('keydown', (e) => {
     if (SCROLL_KEYS.has(e.key)) noteManualScroll();
@@ -1595,6 +1638,7 @@
       displayedLineFloat,
       songHasStarted,
       safeScrollTop,
+      effectivelyFollowing: effectivelyFollowing(),
       inSafeScrollMode: !effectivelyFollowing(),
       safeElapsed,
       safePlayOverride,
@@ -1686,11 +1730,35 @@
       if (iosLastLines.length > 20) iosLastLines.shift();
       bumpDebug('ios_dbg', '');
     })
-    .subscribe();
+    // This subscription used to take no status callback at all, so a channel
+    // that errored or timed out was invisible — and it is the ONLY source of
+    // position and scroll. supabase-js reconnects on its own; the point here
+    // is that the dot stops claiming "Live" while it isn't.
+    .subscribe((status) => {
+      bumpDebug('tick_chan', status);
+      if (status === 'SUBSCRIBED') setStatus('live', 'Live');
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        setStatus('warn', 'Reconnecting…');
+      }
+    });
 
   // Belt-and-braces: re-fetch every 20s in case both postgres_changes AND
   // broadcast missed a row change (e.g. WS reconnect window).
   setInterval(() => { loadInitial(); }, 20000);
+
+  // A phone that has been locked, or a tab that has been in the background,
+  // comes back with a socket that may be dead. Everything the viewer cares
+  // about — position, scroll, the performer's transport — arrives ONLY on
+  // broadcast ticks, so a silently dead socket leaves the page following
+  // song changes (those also come from the 20 s refetch) while never moving
+  // with the performer. Ask for the truth the moment we're visible again.
+  //
+  // NOT a diagnosis of the iPhone report — that was the layout-detach above,
+  // which is reproduced and tested. This is a real hole regardless.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') loadInitial();
+  });
+  window.addEventListener('pageshow', () => { loadInitial(); });
 
   // Reconnect indicator. supabase-js auto-reconnects; we just notice the gap.
   // Ticks are event-driven (no heartbeat), so 8 s without one during a
@@ -2832,19 +2900,45 @@
     document.documentElement.style.setProperty('--topbar-h', h + 'px');
   }
   syncTopbarHeight();
-  if ($topbar && typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(() => { syncTopbarHeight(); rebuildLineAnchors(); }).observe($topbar);
-  }
 
-  window.addEventListener('resize', () => {
-    // Recompute on viewport size change so wrap reflow doesn't desync.
+  /// THE iPHONE "it stopped following" BUG.
+  ///
+  /// Every one of these paths MOVES `scrollTop` without the viewer touching
+  /// anything: `--topbar-h` is the scroll container's `padding-top`, so
+  /// changing it shifts the content; a viewport resize changes
+  /// `clientHeight`, so the browser re-clamps `scrollTop` against a new
+  /// maximum. They used to call `rebuildLineAnchors()` and nothing else,
+  /// leaving `lastAppliedScrollTop` stale — and the detector in `loop()`
+  /// treats any unexplained delta over 2px as a human scroll and detaches.
+  ///
+  /// On a Mac none of this fires during a song. On iPhone Safari the URL bar
+  /// collapses and expands as you move, resizing the layout viewport, so the
+  /// page silently released itself over and over. That is why it followed
+  /// song changes — `applyRow` clears `detachedDuringSong` on a new song —
+  /// but never the performer's position, why tapping Follow appeared to do
+  /// nothing, and why an incognito window behaved identically: nothing about
+  /// it was persisted.
+  ///
+  /// `reflowAfterRenderChange()` is the existing routine for exactly this:
+  /// it keeps the viewer on the same LINE across a re-layout and re-seeds
+  /// BOTH baselines, so our own write is never mistaken for theirs.
+  function noteLayoutChanged() {
     syncTopbarHeight();
-    rebuildLineAnchors();
-  });
+    reflowAfterRenderChange();
+  }
+  if ($topbar && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(noteLayoutChanged).observe($topbar);
+  }
+  window.addEventListener('resize', noteLayoutChanged);
+  // iOS fires neither `resize` nor a ResizeObserver for some URL-bar
+  // transitions, but it does update `visualViewport`.
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', noteLayoutChanged);
+  }
   // Recompute also when the user toggles chords / zooms — both change the
   // layout. Use a ResizeObserver on the body for completeness.
   if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(() => rebuildLineAnchors()).observe($body);
+    new ResizeObserver(() => reflowAfterRenderChange()).observe($body);
   }
 
   /// Convert a line-float index to a target scrollTop that puts that line

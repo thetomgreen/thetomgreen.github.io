@@ -11,6 +11,25 @@ body {
   -webkit-user-select: none;
 }
 
+/* Topbar type scale.
+ *
+ * The bar used to be fixed in `rem` while the song scaled with `--font-size`,
+ * so a viewer who sized the lyrics for their eyesight still got a 0.7rem
+ * status line. It now follows the lyric size: the TITLE matches the lyrics
+ * exactly, everything else sits 30% smaller.
+ *
+ * The cap is what stops it eating the song. `--font-size` goes to 64px; left
+ * uncapped the bar ran to eight rows on a phone. 26px keeps it inside FOUR
+ * rows at 320px — measured, not guessed — which is the budget agreed for the
+ * persistent area. Below the cap the bar tracks the lyrics exactly.
+ *
+ * `min()` rather than `clamp()`: there is no floor to enforce, because
+ * `--font-size` is already clamped to 12px at source. */
+:root {
+  --bar-title-size: min(var(--font-size, 18px), 26px);
+  --bar-text-size: calc(var(--bar-title-size) * 0.7);
+}
+
 /* Top bar */
 .topbar {
   position: fixed;
@@ -50,7 +69,7 @@ body {
 }
 .title-wrap h1 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--bar-title-size);
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -73,14 +92,17 @@ body {
 button#toggle-chords, button#toggle-follow, button#toggle-play,
 button#toggle-capo, .controls button {
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--bar-text-size);
   background: #1f1f1f;
   color: #f5f5f5;
   border: 1px solid #2c2c2c;
   border-radius: 7px;
-  padding: 4px 7px;
+  /* `em` so the box grows with the label instead of clipping it. The
+   * `max(30px, …)` keeps a usable tap target at the smallest sizes, where
+   * 2.1em would be 25px. */
+  padding: 0.3em 0.55em;
   min-width: 0;
-  min-height: 30px;
+  min-height: max(30px, 2.1em);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   flex-shrink: 0;
@@ -94,8 +116,9 @@ button#toggle-capo, .controls button {
 @media (max-width: 430px) {
   button#toggle-chords, button#toggle-follow, button#toggle-play,
   button#toggle-capo, .controls button {
-    padding: 3px 5px;
-    font-size: 0.7rem;
+    /* Tighter box only. The SIZE now comes from `--bar-text-size`, which the
+     * viewer controls — pinning a rem value here overrode their choice. */
+    padding: 0.25em 0.4em;
   }
 }
 button#toggle-chords:hover, button#toggle-chords:focus-visible,
@@ -131,7 +154,7 @@ button#toggle-follow[aria-pressed="true"]:hover { background: #242424; }
  * up its width instead — that title is now also rendered at the top of the
  * scrolling text, so an ellipsis up here costs the viewer nothing. */
 .follow-state {
-  font-size: 0.7rem;
+  font-size: var(--bar-text-size);
   letter-spacing: 0.01em;
   /* Lyric white. Only the BUTTON greys out while following — the sentence
    * beside it is the instruction for how to leave, so it has to be as
@@ -161,15 +184,23 @@ button#toggle-follow[aria-pressed="true"]:hover { background: #242424; }
    * its own (`flex: 1 0 100%`), which left the controls to wrap onto a
    * THIRD row — 100px of top bar on a phone, all of it stolen from the
    * song. `flex: 0 1 auto` lets the two sit side by side. */
+  /* Row 2 reads as one thing: the sentence, then the two controls it is
+   * talking about. "Following, scroll to release  [Release] [Pause]" — the
+   * button that acts on the state sits beside the state, rather than up on
+   * row 1 with the title where the sentence can't reach it.
+   * Integer `order` values, spaced, so another control can be slotted in
+   * later without renumbering. Anything left at the default 0 — the dot, the
+   * title, Show chords — stays on row 1. */
   .follow-state {
-    order: 99;
+    order: 91;
     flex: 0 1 auto;
-    font-size: 0.68rem;
-    padding-top: 10px;
+    margin-top: 4px;
   }
+  button#toggle-follow { order: 92; margin-top: 4px; }
+  button#toggle-play   { order: 93; margin-top: 4px; }
   .controls { order: 100; }
   /* Forces the line break between the two rows. See index.html. */
-  .bar-break { order: 98; flex: 1 0 100%; height: 0; }
+  .bar-break { order: 90; flex: 1 0 100%; height: 0; }
   /* The break splits the wrap into THREE flex lines (row 1, the zero-height
    * break, row 2), so the 8px `gap` would be charged twice. Drop the row gap
    * and space row 2 explicitly instead. */
@@ -205,6 +236,12 @@ button#toggle-play.hidden { visibility: hidden; }
  * and letting it resize shoved Chords/QR/A-/A+ sideways ~10px on every
  * tap. */
 button#toggle-play { min-width: 3.4rem; }
+/* Same reasoning for Follow, whose label now swaps between "Release" (while
+ * following) and "Follow" (once released). Without a floor the bar's button
+ * group changed width on every tap, which on a phone changed whether it
+ * wrapped — the height jump this layout exists to prevent. In `em` so it
+ * tracks the viewer's font size like the buttons themselves. */
+button#toggle-follow { min-width: 4.6em; }
 .controls {
   display: flex;
   gap: 4px;
