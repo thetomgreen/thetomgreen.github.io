@@ -637,6 +637,15 @@
   if ($togglePlay) {
     $togglePlay.addEventListener('click', () => {
       safePlayOverride = !safeClockRunning();
+      // Pressing Play with the song's first sung line already scrolled off
+      // the top means this viewer has read past the lead-in under their own
+      // steam. The lead-in only exists to hold the page still while the
+      // singer works down the first screenful — there is nothing left to
+      // hold for, so start moving now rather than sitting dead until the
+      // clock catches up with where they already are.
+      if (safePlayOverride && scrolledPastFirstLyric()) {
+        safeElapsed = Math.max(safeElapsed, leadInSeconds());
+      }
       applyPlayToggle();
     });
   }
@@ -1651,6 +1660,17 @@
       playVisible: $togglePlay ? !$togglePlay.classList.contains('hidden') : false,
     });
     window.__tapPlay = () => $togglePlay?.click();
+    /// The song's first sung line, and whether the viewer has scrolled it off
+    /// the top — the two halves of the lead-in skip, exposed separately so a
+    /// test can tell "it found the wrong line" from "it judged visibility
+    /// wrongly".
+    window.__firstLyric = () => {
+      const el = firstLyricElement();
+      return {
+        text: el ? el.textContent.trim().slice(0, 48) : null,
+        past: scrolledPastFirstLyric(),
+      };
+    };
     window.__setSafeElapsed = (e) => { safeElapsed = e; };
     window.__simulateManualScroll = () => noteManualScroll();
     /// Drive a real user-style scroll: move the DOM directly, exactly as a
@@ -3037,6 +3057,42 @@
     const L = songSeconds();
     if (middle <= 0) return L;
     return L * S / (2 * middle + S);
+  }
+
+  /// The song's first SUNG line — not the scrolling title block, not a
+  /// "Based on …" credit, not a section label, not a bare chord row, not the
+  /// blank that separates the words from the heading. Same rule
+  /// `insertBlankBeforeFirstLyric` uses to decide where the words begin: a
+  /// lyric line that is not an attribution, or a chord pair, which IS its
+  /// lyric, and never a chords-only line — "Key: G", "Capo 2" and a `$note`
+  /// to the musicians are chart furniture that nobody sings, and in the
+  /// chords view they sit right at the top where they would be mistaken for
+  /// the first line every time. A line hidden in the CURRENT view occupies no
+  /// space and would report a position at the very top of the song, so it is
+  /// skipped the same way `rebuildLineAnchors` skips it.
+  function firstLyricElement() {
+    const els = $body.querySelectorAll(
+      '.line.lyric:not(.attribution):not([data-only-mode="chords"]),'
+      + ' .line.lyrics:not(.attribution):not([data-only-mode="chords"]),'
+      + ' .chord-pair');
+    for (const el of els) {
+      if (el.offsetParent === null && el.offsetHeight === 0) continue;
+      return el;
+    }
+    return null;
+  }
+
+  /// Is that first sung line entirely above the visible area? The top bar is
+  /// fixed and paints OVER the scroller (the scroller's `padding-top` is what
+  /// keeps the song clear of it), so the visible area starts at the bar's
+  /// bottom edge, not at the viewport's top.
+  function scrolledPastFirstLyric() {
+    const el = firstLyricElement();
+    if (!el) return false;
+    const visibleTop = $topbar
+      ? $topbar.getBoundingClientRect().bottom
+      : $scroll.getBoundingClientRect().top;
+    return el.getBoundingClientRect().bottom <= visibleTop;
   }
 
   /// Absolute scroll offset for a given elapsed time, under the same

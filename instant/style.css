@@ -67,14 +67,31 @@ body {
    * buttons onto a second one. From 0 it just grows into whatever is left. */
   flex: 1 1 0;
 }
+/* The title WRAPS rather than ellipsizing at the first line. A title that
+ * fits beside the chart controls stays on one line and the bar is two rows;
+ * one that doesn't takes a second line of its own and pushes the follow row
+ * down to row three. That is the requested behaviour, and it is also the
+ * honest one — a bar that is fighting for pixels should spend them on the
+ * name of what is playing rather than on an ellipsis.
+ *
+ * Clamped at TWO lines: `--font-size` runs to 64px and the persistent area
+ * has a four-row budget, so an unbounded title could eat the song. The
+ * clamp ellipsizes at the cut, so nothing pretends to be complete when it
+ * isn't. `-webkit-box` is the only form of line clamping every target
+ * browser implements; the properties are prefixed by specification, not by
+ * oversight. */
 .title-wrap h1 {
   margin: 0;
   font-size: var(--bar-title-size);
   font-weight: 600;
   letter-spacing: 0.01em;
-  white-space: nowrap;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
   min-width: 0;
 }
 .status-dot {
@@ -90,7 +107,7 @@ body {
 /* Controls — both the in-title-wrap toggle and the right-side group */
 .controls, .title-wrap { /* shared button styles */ }
 button#toggle-chords, button#toggle-follow, button#toggle-play,
-button#toggle-capo, .controls button {
+button#toggle-capo, button#show-qr, .controls button {
   font: inherit;
   font-size: var(--bar-text-size);
   background: #1f1f1f;
@@ -115,7 +132,7 @@ button#toggle-capo, .controls button {
  * and back. Two rows in both follow states is the requirement. */
 @media (max-width: 430px) {
   button#toggle-chords, button#toggle-follow, button#toggle-play,
-  button#toggle-capo, .controls button {
+  button#toggle-capo, button#show-qr, .controls button {
     /* Tighter box only. The SIZE now comes from `--bar-text-size`, which the
      * viewer controls — pinning a rem value here overrode their choice. */
     padding: 0.25em 0.4em;
@@ -123,6 +140,7 @@ button#toggle-capo, .controls button {
 }
 button#toggle-chords:hover, button#toggle-chords:focus-visible,
 button#toggle-follow:hover, button#toggle-follow:focus-visible,
+button#show-qr:hover, button#show-qr:focus-visible,
 .controls button:hover, .controls button:focus-visible {
   background: #2a2a2a; outline: none;
 }
@@ -165,49 +183,84 @@ button#toggle-follow[aria-pressed="true"]:hover { background: #242424; }
   color: #f5f5f5;
   white-space: nowrap;
   flex: 0 0 auto;
+  /* RESERVES the width of the LONGER of its two sentences, so the row it
+   * sits on needs the same space whichever one is showing. Without it the
+   * bar wrapped to three rows while following ("Following, scroll to
+   * release", 12.68em) and two once released ("Released from follow",
+   * 9.96em) — measured at 360px — so the bar changed height on every tap of
+   * Follow, and a bar that changes height shoves the song up and down under
+   * it. Same rule the Capo, Play and Follow buttons already follow.
+   *
+   * In `em`, so it tracks the viewer's text size: the sentence measured
+   * 12.68em at 12.6px and 12.0em at 18.2px (small-size font metrics), and
+   * 12.8em covers both. A reserve that came out slightly SHORT would simply
+   * leave the longer sentence at its natural width — the behaviour before
+   * this line existed — so the failure direction is safe. */
+  min-width: 12.8em;
 }
 .follow-state[data-following="false"] { color: #7fa4ff; }
 .follow-state.hidden { display: none; }
-/* Under ~430px the bar cannot hold the title, a whole short sentence AND
- * five buttons — measured, it overflowed by 18–65px. Rather than truncate
- * either the title or the sentence (half a sentence is no use), the state
- * drops to its own row directly beneath. `order` puts it last in the flex
- * order so the BUTTONS stay on row one with the title; `flex-basis: 100%`
- * is what forces the wrap. The bar gets taller, which is why its height is
- * measured into `--topbar-h` rather than hard-coded. */
-/* Inline beside the Follow button needs the title floor + the sentence +
- * three buttons + the zoom/QR group on one line. Below that it moves to a
- * second row rather than truncating anything. The threshold is set where a
- * bar carrying the CAPO button too still fits on one line — pick it any
- * lower and turning the chords on (which reveals capo) tips the bar from
- * one row to two, which shoves the song down and back. */
+/* THE BAR'S READING ORDER.
+ *
+ * On a WIDE screen everything sits on one line and the order below is what
+ * it reads as, left to right:
+ *
+ *   ● Song title ………… following, scroll to release [Release] [Pause]
+ *                          [Show chords] [Capo] [QR]  [A−] [A+]
+ *
+ * The state and the button that acts on it stay adjacent; the chart
+ * controls and the one-off QR follow. Integer values, spaced, so a control
+ * can be slotted in later without renumbering everything after it. */
+.follow-state       { order: 10; }
+button#toggle-follow { order: 11; }
+button#toggle-play   { order: 12; }
+button#toggle-chords { order: 20; }
+button#toggle-capo   { order: 21; }
+button#show-qr       { order: 22; }
+.controls            { order: 100; }
+
+/* NARROW (phone / split-screen iPad): two rows, by design.
+ *
+ *   row 1   ● Song title            [Show chords] [Capo] [QR]
+ *   row 2   following, scroll to release [Release] [Pause]    [A−] [A+]
+ *
+ * Row 1 is what is playing and what to show of it. Row 2 is what the page
+ * is doing right now and the controls for it — the follow state with the
+ * button that acts on it, the transport, and the viewer's own text size.
+ * Nothing on row 2 is about the song; nothing on row 1 is about this
+ * viewer's reading of it.
+ *
+ * The chart controls keep their wide-layout order values (all below the
+ * break's 90), so they need no override here — only the follow group moves,
+ * from ahead of them to after the break.
+ *
+ * The threshold is 700px because the one-row form needs the title floor,
+ * a whole short sentence and six buttons side by side, and it is set where
+ * a bar carrying the CAPO button too still fits — pick it any lower and
+ * turning the chords on (which reveals capo) tips the bar from one row to
+ * two, which shoves the song down and back. */
 @media (max-width: 700px) {
-  /* Row 1 is the title and the transport buttons; row 2 is this sentence
-   * SHARING with the zoom/QR group. It used to claim a full-width row of
-   * its own (`flex: 1 0 100%`), which left the controls to wrap onto a
-   * THIRD row — 100px of top bar on a phone, all of it stolen from the
-   * song. `flex: 0 1 auto` lets the two sit side by side. */
-  /* Row 2 reads as one thing: the sentence, then the two controls it is
-   * talking about. "Following, scroll to release  [Release] [Pause]" — the
-   * button that acts on the state sits beside the state, rather than up on
-   * row 1 with the title where the sentence can't reach it.
-   * Integer `order` values, spaced, so another control can be slotted in
-   * later without renumbering. Anything left at the default 0 — the dot, the
-   * title, Show chords — stays on row 1. */
   .follow-state {
     order: 91;
+    /* `flex: 0 1 auto`, not `1 0 100%`: a full-width row of its own left the
+     * zoom pair to wrap onto a THIRD row — 100px of top bar on a phone, all
+     * of it taken from the song. */
     flex: 0 1 auto;
     margin-top: 4px;
   }
   button#toggle-follow { order: 92; margin-top: 4px; }
   button#toggle-play   { order: 93; margin-top: 4px; }
-  .controls { order: 100; }
   /* Forces the line break between the two rows. See index.html. */
   .bar-break { order: 90; flex: 1 0 100%; height: 0; }
   /* The break splits the wrap into THREE flex lines (row 1, the zero-height
    * break, row 2), so the 8px `gap` would be charged twice. Drop the row gap
-   * and space row 2 explicitly instead. */
-  .title-wrap { row-gap: 0; }
+   * and space row 2 explicitly instead.
+   *
+   * The column gap comes down to 6px, which is what buys the two-row form on
+   * a 375px phone: row 2 (the sentence, Release, Pause, A−, A+) measured
+   * 356.7px against 355px of bar — it missed by under two pixels, and three
+   * gaps at 6px rather than 8px hands back six. */
+  .title-wrap { row-gap: 0; column-gap: 6px; }
   .controls { margin-top: 4px; }
 }
 .bar-break { display: none; }
@@ -217,10 +270,14 @@ button#toggle-follow[aria-pressed="true"]:hover { background: #242424; }
  * by a row on every song-to-list transition — and a bar that changes height
  * shoves the content under it up and down, which is the thing this layout
  * exists to prevent. One height, every view. */
-/* Below ~340px (iPhone SE-class) the sentence and the zoom/QR group cannot
- * share a row, and whether they fit depends on WHICH sentence is showing —
- * so the bar changed height when the viewer released the follow. Give the
- * sentence its own row there: three rows always beats two that jump. */
+/* Below ~340px (iPhone SE-class) row 2 cannot hold the sentence, the two
+ * transport buttons AND the zoom pair, so something wraps whatever we do.
+ * Giving the sentence a row of its own is the cheaper of the two wraps: a
+ * line of text is 15px where a button row is 30px, so this form measures
+ * 105px of bar against 120px for the alternative. (It no longer has
+ * anything to do with the bar changing height between follow states — the
+ * width reserve on `.follow-state` is what holds that invariant now, at
+ * every width and every text size.) */
 @media (max-width: 340px) {
   .follow-state { flex: 1 0 100%; }
 }
@@ -235,10 +292,12 @@ button#toggle-follow.hidden { display: none; }
  * the bar's height by ~38px, which shoved the song down and back every time
  * Follow was tapped. Measured at 360px and 390px. */
 button#toggle-play.hidden { visibility: hidden; }
-/* Fixed width: the label swaps between "Pause" (44px) and "Play" (34px),
- * and letting it resize shoved Chords/QR/A-/A+ sideways ~10px on every
- * tap. */
-button#toggle-play { min-width: 3.4rem; }
+/* Fixed width: the label swaps between "Pause" and "Play", and letting it
+ * resize shoved the zoom pair beside it sideways on every tap. In `em`, like
+ * the Follow button next to it, so it tracks the viewer's text size instead
+ * of pinning a rem value that ignores it — which at small sizes also spent
+ * width row 2 has none of. */
+button#toggle-play { min-width: 3.8em; }
 /* Same reasoning for Follow, whose label now swaps between "Release" (while
  * following) and "Follow" (once released). Without a floor the bar's button
  * group changed width on every tap, which on a phone changed whether it
