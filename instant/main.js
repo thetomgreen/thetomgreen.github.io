@@ -1225,18 +1225,26 @@
   /// do not have, on top of a chart that already accounts for it. Say whose
   /// capo it is, and say what was done about it.
   ///
-  /// The third form is gated on the shift actually being non-zero rather
-  /// than on the toggle: when the performer sends a chart already at
-  /// sounding pitch (`capo_compensated`), a viewer without a capo needs no
-  /// transposition at all, and claiming one would be a lie. The number comes
-  /// from the shift that was applied, not from the capo, so the sentence
-  /// stays true even if those two ever part company.
+  /// The sentence is about what is ON THIS SCREEN, not about who did the
+  /// transposing — which is why it does NOT test `capoShift()`. That
+  /// function is only the WEB side's share of the work, and there are two
+  /// ways to arrive at the same chart:
+  ///
+  ///   `capo_compensated` false — the performer sends the chart as written
+  ///     and `capoShift()` adds the capo here.
+  ///   `capo_compensated` true  — the performer already folded the capo into
+  ///     `transpose_semitones` (`AudienceShareSession.effectiveTranspose`),
+  ///     so `capoShift()` correctly does nothing.
+  ///
+  /// Either way a viewer without a capo is looking at a chart `songCapo`
+  /// semitones above the one it is written as, so the sentence is true in
+  /// both. Gating on `capoShift()` made the compensated case — which is what
+  /// a performer who plays this song without a capo actually publishes —
+  /// say nothing at all.
   function capoHeadText() {
     if (viewerHasCapo) return `Capo ${songCapo}`;
-    const shift = capoShift();
-    if (shift <= 0) return `Capo ${songCapo} (other players)`;
     return `Capo ${songCapo} (other players). `
-         + `This view is transposed up ${shift} to adjust.`;
+         + `This view is transposed up ${songCapo} to adjust.`;
   }
   let serverElapsed = 0;
   let serverPlaying = false;
