@@ -1213,6 +1213,31 @@
     const have = capoCompensated ? songCapo : 0;
     return want - have;
   }
+
+  /// The capo line under the song title in the scrolling head.
+  ///
+  /// With a capo on it is simply the fret the chart is written for — the
+  /// same thing everyone else on stage is reading.
+  ///
+  /// With "No capo" selected it is not. The chart in front of THIS viewer
+  /// has been transposed up so it sounds the same played open, so "Capo 2"
+  /// on its own would be telling them to fit a capo they have just said they
+  /// do not have, on top of a chart that already accounts for it. Say whose
+  /// capo it is, and say what was done about it.
+  ///
+  /// The third form is gated on the shift actually being non-zero rather
+  /// than on the toggle: when the performer sends a chart already at
+  /// sounding pitch (`capo_compensated`), a viewer without a capo needs no
+  /// transposition at all, and claiming one would be a lie. The number comes
+  /// from the shift that was applied, not from the capo, so the sentence
+  /// stays true even if those two ever part company.
+  function capoHeadText() {
+    if (viewerHasCapo) return `Capo ${songCapo}`;
+    const shift = capoShift();
+    if (shift <= 0) return `Capo ${songCapo} (other players)`;
+    return `Capo ${songCapo} (other players). `
+         + `This view is transposed up ${shift} to adjust.`;
+  }
   let serverElapsed = 0;
   let serverPlaying = false;
   let serverInPlay = false;
@@ -2527,14 +2552,18 @@
         b.textContent = basedOnText;
         head.appendChild(b);
       }
-      // The fret the chart is written for. Chart furniture, so it rides with
-      // the chords and is hidden with them — someone reading the words has no
-      // use for it. This is the SONG's capo, fixed; the button in the bar is
-      // the viewer's own, and toggles.
+      // The fret the chart is written for, and — when this viewer has said
+      // they have no capo — what was done to the chart to suit them. Chart
+      // furniture, so it rides with the chords and is hidden with them:
+      // someone reading the words has no use for it. This is the SONG's capo,
+      // fixed; the button in the bar is the viewer's own, and toggles. Every
+      // capo toggle changes `capoShift()` by a non-zero amount, so
+      // `rerenderForTranspose` always re-renders and this line is never left
+      // describing the other state.
       if (songCapo) {
         const c = document.createElement('div');
         c.className = 'song-head-capo';
-        c.textContent = `Capo ${songCapo}`;
+        c.textContent = capoHeadText();
         head.appendChild(c);
       }
       frag.appendChild(head);
