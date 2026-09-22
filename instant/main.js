@@ -344,6 +344,12 @@
   /// arrival. While set, the page travels at the flat maximum
   /// reposition rate regardless of direction or distance.
   let repositioning = false;
+  /// Travelling to the performer after JOINING mid-song. Same flat rate as a
+  /// hand-scroll, but a DIFFERENT latch on purpose: `repositioning` means
+  /// "the performer dragged the chart", and there are tests that rightly
+  /// assert ordinary playback never arms it. Sharing the flag made a join
+  /// look like a drag to every one of them.
+  let joinTravel = false;
   /// Threshold (in line-floats) for "target reached" when releasing the
   /// sticky catch-up state. Half a line is tight enough to feel like an
   /// arrival without flickering at the boundary on the next frame.
@@ -817,7 +823,16 @@
     if (awaitingFirstLiveTick && lastTickAt > 0) {
       awaitingFirstLiveTick = false;
       if (trackingEnabled && !detachedDuringSong) {
-        needSnap = true;
+        // TRAVEL, not snap — the viewer may still be on their way to the
+        // position the row gave us, and a teleport mid-journey is exactly
+        // the disorientation the travel exists to avoid. Re-arming the latch
+        // just retargets the journey; `target` is recomputed every frame, so
+        // a corrected elapsed is picked up without any jump.
+        //
+        // Still needed even though the row is refreshed now: it covers a
+        // viewer whose host is running an older build, where the row's
+        // position is only written on song change.
+        joinTravel = true;
       }
     }
   }
@@ -946,7 +961,7 @@
       // --- the gates that can stop the page
       effectivelyFollowing: effectivelyFollowing(),
       trackingEnabled, masterFollowEnabled, detachedDuringSong,
-      fastCatchUp, repositioning, songHasStarted,
+      fastCatchUp, repositioning, joinTravel, songHasStarted,
       safeClockRunning: safeClockRunning(),
       safeElapsed: +safeElapsed.toFixed(3),
       safePlayOverride,
@@ -1406,6 +1421,7 @@
       // immediately re-latch it.
       songHasStarted = false;
       repositioning = false;
+      joinTravel = false;
       // New song, new clock: drop the viewer's play/pause choice and the
       // seek baseline, both of which only made sense for the old song.
       safePlayOverride = null;
@@ -1465,12 +1481,46 @@
       // A transpose-only re-render keeps the viewer's current position.
       rebuildLineAnchors();
       if (contentChanged) {
-        if (!hasReceivedFirstRow || resumingSong) {
-          // Initial join, or back from the between-songs page: snap to the
-          // host's mid-song position so a late
-          // joiner doesn't see the page race down from the top. The
-          // row's elapsed may be stale (it only refreshes on song-
-          // change writes), so re-snap on the first live tick too.
+        // Only a join that lands PART-WAY INTO A PLAYING SONG has anywhere to
+        // travel to. Joining before the performer starts, or while they are
+        // parked out of play with a hand-scroll position, has always snapped
+        // — invisibly, because the target is the top or a few lines down —
+        // and several behaviours are built on that snap having happened.
+        const joiningMidSong = serverPlaying && serverElapsed > 0;
+        if ((!hasReceivedFirstRow || resumingSong) && joiningMidSong) {
+          // Initial join, or back from the between-songs page. Start at the
+          // TOP and TRAVEL to the performer rather than snapping there.
+          //
+          // Snapping was the old behaviour and it hid the real bug: the
+          // row's `virtual_elapsed` only refreshed on song-change writes, so
+          // for a song played straight through it read zero and the "snap"
+          // landed on line 1 — a viewer who joined five minutes in sat at the
+          // top for the rest of the song. iOS now refreshes the row's
+          // position every few seconds (`positionRowRefreshInterval`), so the
+          // target is real.
+          //
+          // Travelling is also the better arrival: someone who has just
+          // scanned a QR code has no idea where in the song they are, and
+          // being dropped mid-page tells them nothing. Watching the page run
+          // down to the performer shows them how far in they came. Same
+          // mechanism and same flat rate as re-attaching after a hand-scroll
+          // (`reattachToMaster`), and the same self-release on arrival.
+          $scroll.scrollTop = 0;
+          displayedLineFloat = 0;
+          needSnap = false;
+          // `noteServerPlaybackTransition` ran earlier in this same function
+          // and, on the rising play edge a join usually presents, called
+          // `reattachToMaster()` — which arms the HAND-SCROLL latch. The old
+          // code hid that: it snapped, so the delta was ~0 and the latch
+          // released on the very next frame. Without the snap it would stay
+          // armed and a join would read as a drag everywhere downstream.
+          repositioning = false;
+          joinTravel = true;
+          awaitingFirstLiveTick = true;
+        } else if (!hasReceivedFirstRow || resumingSong) {
+          // Joined before the song is under way: snap, exactly as before.
+          // There is nothing to show the viewer by travelling, and the old
+          // snap is what the pre-play and out-of-play paths expect.
           needSnap = true;
           awaitingFirstLiveTick = true;
         } else {
@@ -1480,6 +1530,7 @@
           $scroll.scrollTop = 0;
           displayedLineFloat = 0;
           needSnap = false;
+          joinTravel = false;
           awaitingFirstLiveTick = false;  // not a late-joiner anymore
         }
         // We just moved the page ourselves (to the top, or about to snap).
@@ -1536,6 +1587,7 @@
       detachedDuringSong,
       fastCatchUp,
       repositioning,
+      joinTravel,
       prevServerPlaying,
       prevServerInPlay,
       serverPlaying,
@@ -3072,6 +3124,7 @@
       // latch whose release path is unreachable is a bug waiting for the one
       // caller that doesn't get pre-empted.
       repositioning = false;
+      joinTravel = false;
       return;
     }
 
@@ -3107,6 +3160,9 @@
       if (repositioning && Math.abs(delta) < CATCH_UP_RELEASE_LINES) {
         repositioning = false;
       }
+      if (joinTravel && Math.abs(delta) < CATCH_UP_RELEASE_LINES) {
+        joinTravel = false;
+      }
 
       const baseMaxStep = baseLinesPerSec * 4 * dt;
       /// The flat maximum: 2.5x the fastest forward reading speed. This is
@@ -3115,7 +3171,7 @@
       const repositionRate = baseLinesPerSec * 4 * BACKWARD_MAX_MULTIPLIER;
 
       let step;
-      if (repositioning) {
+      if (repositioning || joinTravel) {
         // HAND-SCROLL. The performer is dragging the chart, and the page
         // follows at the flat maximum rate whichever way they went and
         // however far — a drag is a deliberate "look here now", so there
