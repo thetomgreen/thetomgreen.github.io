@@ -572,6 +572,8 @@
       // while following, blue "Follow" once released — see the CSS, which
       // keys off the same `aria-pressed`.
       $toggleFollow.textContent = on ? 'Release' : 'Follow';
+      $toggleFollow.title = on ? "Stop following the performer's position"
+                               : "Follow the performer's position again";
       // Greyed while following (you are already following — the banner beside
       // it says how to leave), blue when released, where tapping it is the
       // action to take. Styling only, via `aria-pressed`: the button stays

@@ -138,10 +138,13 @@ button#toggle-capo { min-width: 4.4rem; }
  * which changed whether the bar wrapped, which changed its height by a whole
  * row every time the chords were toggled — shoving the song down and back. */
 button#toggle-capo.hidden { visibility: hidden; }
-/* Follow is the inverse of a normal toggle: it is BLUE when the viewer is
- * released, because that is when tapping it does something. While following
- * it is disabled and grey — you are already following, and the way out is to
- * scroll, which the banner beside it says. */
+/* The button is labelled for what it DOES, not for the state it is in, so
+ * the colour follows the label rather than inverting against it: blue
+ * "Follow" while released (the call to action), grey "Release" while
+ * following (available, but not something to draw the eye). Both states are
+ * live — scrolling is the other way out, which the sentence beside it says.
+ * Keyed on `aria-pressed`, which `applyFollowToggle` writes from the same
+ * predicate as the label and the sentence. */
 button#toggle-follow[aria-pressed="false"] { background: #2c5fff; border-color: #2c5fff; }
 button#toggle-follow[aria-pressed="true"] {
   background: #1a1a1a;

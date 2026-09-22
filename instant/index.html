@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0a0a0a">
   <title>Love Drops — live</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='70' font-size='80' text-anchor='middle'%3E♫%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=53">
+  <link rel="stylesheet" href="style.css?v=54">
 </head>
 <body>
   <header class="topbar">
@@ -19,12 +19,17 @@
       <div class="title-text">
         <h1 id="song-title">…</h1>
       </div>
-      <!-- Follow state reads to the LEFT of the button and says how to leave:
-           while following the button is inert (you're already following, and
-           the way out is to scroll), so it's disabled and the banner carries
-           the instruction. Released, the button is the blue call to action. -->
+      <!-- Follow state reads to the LEFT of the button, and on a phone the
+           button now sits beside it on the same row so the control and the
+           state it acts on read as one thing. The sentence says the other way
+           out — scrolling — which the button cannot express. -->
       <span id="follow-state" class="follow-state" aria-live="polite"></span>
-      <button id="toggle-follow" type="button" aria-pressed="true" title="Follow the master's position in the song">Follow</button>
+      <!-- Label and title are rewritten by `applyFollowToggle` from the one
+           predicate, `effectivelyFollowing()`: grey "Release" while
+           following, blue "Follow" once released. Ships in the FOLLOWING
+           state, which is how every session starts — shipping "Follow" here
+           meant a frame of the wrong label on every load. -->
+      <button id="toggle-follow" type="button" aria-pressed="true" title="Stop following the performer's position">Release</button>
       <!-- Transport for viewers who are NOT following the performer (they
            tapped Follow off, scrolled away, or the performer turned off
            "Followers track my position"). Hidden while following, because
@@ -101,6 +106,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <!-- QR code generator (lazy-loaded on demand by main.js so it doesn't
        cost first-paint for the 99% of viewers who never tap "QR"). -->
-  <script src="main.js?v=53"></script>
+  <script src="main.js?v=54"></script>
 </body>
 </html>
