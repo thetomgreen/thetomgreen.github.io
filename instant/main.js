@@ -2515,13 +2515,34 @@
     div.dataset.rawLineStart = String(rawIndex);
     div.dataset.rawLineEnd = String(rawIndex);
     div.dataset.onlyMode = prefixed.mode;
-    if (isSectionHeader(prefixed.content)) {
-      div.className = 'line section';
-      div.textContent = normalizeSectionHeader(prefixed.content.trim()) || ' ';
-    } else {
-      div.className = 'line lyric';
-      div.textContent = prefixed.content || ' ';
-    }
+    const header = isSectionHeader(prefixed.content);
+    // EVERY `#` line is green (owner, 2026-09-25). It used to depend on
+    // whether the content happened to be a recognised section keyword, so
+    // `#instrumental` came out green and `#short instrumental` came out
+    // looking like a line to sing — a distinction nobody writing a chart is
+    // thinking about, and the wrong way round: if anything, the one with the
+    // extra word is more obviously a direction.
+    //
+    // It also makes the two `#` forms agree at last. The WRAPPED `# … #` form
+    // has been unconditionally green since 2026-09-09 on the grounds that
+    // "it's a direction, not a line to sing" — which is exactly as true of
+    // the single-prefix form.
+    //
+    // `$` lines are deliberately NOT included. They are notes to the
+    // musicians rather than directions in the words, they show in the other
+    // view, and the owner asked about `#`. Worth asking separately.
+    const asDirection = header || prefixed.mode === 'lyrics';
+    div.className = asDirection ? 'line section' : 'line lyric';
+    // The TEXT rule is unchanged: a header loses its brackets
+    // (`#[Guitar Solo]` → "Guitar Solo"), anything else is shown as written.
+    div.textContent = (header ? normalizeSectionHeader(prefixed.content.trim())
+                              : prefixed.content) || ' ';
+    // Marks it as a DIRECTION rather than a navigational label, which is what
+    // decides whether the lyrics view's blank-before-the-first-lyric hops
+    // above it. A `#` line is the same kind of thing as a `# … #` annotation,
+    // which already carries this — a label like `[Chorus]` belongs to the
+    // verse under it, a direction does not.
+    if (asDirection && !header) div.dataset.annotation = 'true';
     return div;
   }
 
