@@ -113,133 +113,47 @@
       </div>
       <div class="absolute -bottom-12 -left-12 w-64 h-64 bg-red-600/20 organic-blob blur-3xl pointer-events-none"></div>
     </section>
-    <section class="py-lg px-margin">
-      <div class="max-w-5xl mx-auto">
-        <h2 class="font-headline-lg text-headline-md md:text-headline-lg italic text-on-background text-center mb-8">Big Stick 2025</h2>
-        <div class="flex justify-center mb-10"><img src="/take3/scammy.png" alt="Scammy & The Side Effects logo" class="w-40 md:w-48 rounded-full drop-shadow-[8px_8px_0px_rgba(214,57,94,0.35)]"></div>
-        <div class="grid md:grid-cols-2 gap-8">
-        <div class="bg-surface-container-high p-8 rounded-2xl border-2 border-primary/20 hard-shadow space-y-5">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-red-500 text-3xl" style="font-variation-settings: 'FILL' 1;">print</span>
-            <h3 class="font-headline-md text-2xl font-semibold text-primary">PDFs for printing</h3>
-          </div>
-          <p class="text-on-surface-variant font-body-md">Download and print. One file per version.</p>
-          <div class="space-y-3">
-            <a href="/songs/Scammy-%26-The-Side-Effects-with-chords.pdf" download class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Songs with chords</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">download</span>
-            </a>
-            <a href="/songs/Scammy-%26-The-Side-Effects-lyrics.pdf" download class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Lyrics only</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">download</span>
-            </a>
-          </div>
-        </div>
-        <div class="bg-surface-container-high p-8 rounded-2xl border-2 border-primary/20 hard-shadow space-y-5">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-red-500 text-3xl" style="font-variation-settings: 'FILL' 1;">description</span>
-            <h3 class="font-headline-md text-2xl font-semibold text-primary">Google Docs</h3>
-          </div>
-          <p class="text-on-surface-variant font-body-md">For reading on your phone — or make a copy to do your own edits.</p>
-          <div class="space-y-3">
-            <a href="https://docs.google.com/document/d/1fJPa1lI2l_XzDEsP_CrvE-Ihh7eikHvHDFuGYhGykOw/edit?usp=sharing" target="_blank" rel="noopener" class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Songs with chords</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">open_in_new</span>
-            </a>
-            <a href="https://docs.google.com/document/d/1QSXpP0kVUohCoSZRM9tR2GSbH_c-acH4FGQZ01SdsnQ/edit?usp=sharing" target="_blank" rel="noopener" class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Lyrics only</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">open_in_new</span>
-            </a>
-          </div>
-        </div>
-        </div>
-      </div>
+    <section id="lock" class="pb-xl px-margin">
+      <form id="lock-form" class="max-w-md mx-auto bg-surface-container-high p-8 rounded-2xl border-2 border-primary/20 hard-shadow space-y-4">
+        <label for="pw" class="block font-label-bold text-primary-fixed uppercase tracking-wider">Password</label>
+        <input id="pw" type="password" autocomplete="current-password" required autofocus class="w-full bg-slate-950 border-2 border-outline-variant rounded-lg p-4 text-on-surface focus:border-red-600 focus:ring-0 outline-none transition-all">
+        <button type="submit" class="w-full py-4 bg-red-600 text-primary-fixed font-headline-md italic text-2xl rounded-xl hover:bg-red-700 transition-all hard-shadow-sm active:translate-y-1 active:shadow-none">Unlock</button>
+        <p id="lock-status" class="text-center font-body-md text-red-400 min-h-[1.5rem]"></p>
+      </form>
     </section>
-    <section class="py-lg px-margin">
-      <div class="max-w-5xl mx-auto">
-        <h2 class="font-headline-lg text-headline-md md:text-headline-lg italic text-on-background text-center mb-8">Room Service 2024 — Compostal Service</h2>
-        <div class="grid md:grid-cols-2 gap-8">
-        <div class="bg-surface-container-high p-8 rounded-2xl border-2 border-primary/20 hard-shadow space-y-5">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-red-500 text-3xl" style="font-variation-settings: 'FILL' 1;">print</span>
-            <h3 class="font-headline-md text-2xl font-semibold text-primary">PDFs for printing</h3>
-          </div>
-          <p class="text-on-surface-variant font-body-md">Download and print. One file per version.</p>
-          <div class="space-y-3">
-            <a href="/songs/Compostal-Service-with-chords.pdf" download class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Songs with chords</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">download</span>
-            </a>
-            <a href="/songs/Compostal-Service-lyrics.pdf" download class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Lyrics only</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">download</span>
-            </a>
-          </div>
-        </div>
-        <div class="bg-surface-container-high p-8 rounded-2xl border-2 border-primary/20 hard-shadow space-y-5">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-red-500 text-3xl" style="font-variation-settings: 'FILL' 1;">description</span>
-            <h3 class="font-headline-md text-2xl font-semibold text-primary">Google Docs</h3>
-          </div>
-          <p class="text-on-surface-variant font-body-md">For reading on your phone — or make a copy to do your own edits.</p>
-          <div class="space-y-3">
-            <a href="https://docs.google.com/document/d/1rkCIZiS2fz-FmCpLGul1mQ6w4-lQw76OXGS8OLEGSkw/edit?usp=sharing" target="_blank" rel="noopener" class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Songs with chords</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">open_in_new</span>
-            </a>
-            <a href="https://docs.google.com/document/d/1ES3ZXYwqR7WtDaMFhrbkKayTeqBTRduzPZzsTCN2434/edit?usp=sharing" target="_blank" rel="noopener" class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Lyrics only</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">open_in_new</span>
-            </a>
-          </div>
-        </div>
-        </div>
-      </div>
-    </section>
-    <section class="py-lg px-margin">
-      <div class="max-w-5xl mx-auto">
-        <h2 class="font-headline-lg text-headline-md md:text-headline-lg italic text-on-background text-center mb-8">The Love Drops Songs (no Take 3 references)</h2>
-        <div class="grid md:grid-cols-2 gap-8">
-        <div class="bg-surface-container-high p-8 rounded-2xl border-2 border-primary/20 hard-shadow space-y-5">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-red-500 text-3xl" style="font-variation-settings: 'FILL' 1;">print</span>
-            <h3 class="font-headline-md text-2xl font-semibold text-primary">PDFs for printing</h3>
-          </div>
-          <p class="text-on-surface-variant font-body-md">Download and print. One file per version.</p>
-          <div class="space-y-3">
-            <a href="/songs/The-Love-Drops-Songs-with-chords-06_2025.pdf" download class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Songs with chords</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">download</span>
-            </a>
-            <a href="/songs/The-Love-Drops-Songs-Lyrics-06_2025.pdf" download class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Lyrics only</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">download</span>
-            </a>
-          </div>
-        </div>
-        <div class="bg-surface-container-high p-8 rounded-2xl border-2 border-primary/20 hard-shadow space-y-5">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-red-500 text-3xl" style="font-variation-settings: 'FILL' 1;">description</span>
-            <h3 class="font-headline-md text-2xl font-semibold text-primary">Google Docs</h3>
-          </div>
-          <p class="text-on-surface-variant font-body-md">For reading on your phone — or make a copy to do your own edits.</p>
-          <div class="space-y-3">
-            <a href="https://docs.google.com/document/d/1XDuULUbHZ-hN5WzScmwa6iYAUAYyLLfbMqGOAu9Zhcc/edit?usp=sharing" target="_blank" rel="noopener" class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Songs with chords</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">open_in_new</span>
-            </a>
-            <a href="https://docs.google.com/document/d/1Z4C6W6ymmmjTIKgzark3eLYoM1G_aDOgi_0Ll1AYjXs/edit?usp=sharing" target="_blank" rel="noopener" class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
-              <span class="font-headline-md italic text-xl text-on-surface">Lyrics only</span>
-              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">open_in_new</span>
-            </a>
-          </div>
-        </div>
-        </div>
-      </div>
-    </section>
-    <section class="pt-8 pb-xl px-margin">
-      <p class="max-w-3xl mx-auto text-center font-body-md text-on-surface-variant"><strong class="text-on-surface">Please respect Take 3 guidelines when sharing these songs, to protect the privacy of Take 3 events.</strong><br><br>Shared under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener" class="text-red-400 underline underline-offset-4">CC BY-NC-SA 4.0</a> — share freely, remix freely, no commercial use, credit The Love Drops. Spotted a mistake or did something fun with a song? <a href="/#contact" class="text-red-400 underline underline-offset-4">Tell us</a>.</p>
-    </section>
+    <div id="unlocked"></div>
+    <script>
+      (() => {
+        const payload = {"salt": "L/0IwXYeo8v7Z/A4l+N3MQ==", "iv": "E0e1NDozQPfZ2sls", "ct": "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", "iter": 600000};
+        const STORE = "ld-take3-pw";
+        const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        async function unlock(pw) {
+          const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+          const key = await crypto.subtle.deriveKey(
+            { name: "PBKDF2", salt: bytes(payload.salt), iterations: payload.iter, hash: "SHA-256" },
+            base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+          const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes(payload.iv) }, key, bytes(payload.ct));
+          document.getElementById("lock").remove();
+          document.getElementById("unlocked").innerHTML = new TextDecoder().decode(plain);
+          localStorage.setItem(STORE, pw);
+        }
+        const form = document.getElementById("lock-form");
+        const status = document.getElementById("lock-status");
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          status.textContent = "Checking…";
+          status.className = "text-center font-body-md text-on-surface-variant min-h-[1.5rem]";
+          try {
+            await unlock(document.getElementById("pw").value.trim().toLowerCase());
+          } catch {
+            status.textContent = "That's not it. Try again?";
+            status.className = "text-center font-body-md text-red-400 min-h-[1.5rem]";
+          }
+        });
+        const saved = localStorage.getItem(STORE);
+        if (saved) unlock(saved).catch(() => localStorage.removeItem(STORE));
+      })();
+    </script>
   </main>
 
   <!-- FOOTER -->
