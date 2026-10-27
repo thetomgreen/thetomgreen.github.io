@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <title>Song Sheets — The Love Drops</title>
+  <meta name="description" content="Chord sheets and lyrics for The Love Drops songs, free to download.">
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/jpeg" href="/logo.jpeg">
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600;1,700;1,800&family=Be+Vietnam+Pro:wght@400;500&family=Epilogue:wght@700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            // Override Tailwind's red palette with logo-pink shades so existing
+            // bg-red-*, text-red-*, border-red-* utilities pick up the new accent.
+            red: {
+              50:  "#fdf2f6",
+              100: "#fce7ee",
+              200: "#fbd0dc",
+              300: "#f5a8bd",
+              400: "#ec7393",
+              500: "#d6395e",   // primary accent (logo pink)
+              600: "#c12d50",   // hover / button bg
+              700: "#a02141",   // active / deep
+              800: "#7a1731",
+              900: "#5c0e22"
+            },
+            // Soft warm cream from the logo letterforms — used as a secondary accent
+            "cream":             "#f3e6cf",
+            "primary-fixed":     "#ffdad7",
+            "surface-container-high":     "#232a38",
+            "surface-container-lowest":   "#070e1b",
+            "primary":           "#f5a8bd",   // soft pink for headings on dark
+            "on-primary-container": "#5c0e22",
+            "outline-variant":   "#5c3f3d",
+            "surface-variant":   "#2e3543",
+            "outline":           "#ac8885",
+            "surface-container-low":  "#151c29",
+            "on-background":     "#e6e9f5",
+            "on-surface":        "#e6e9f5",
+            "surface-container-highest": "#2e3543",
+            "primary-container": "#d6395e",
+            "background":        "#0c1320",
+            "surface":           "#0c1320",
+            "on-surface-variant": "#cfd5e6",
+            "surface-container": "#19202d"
+          },
+          spacing: {
+            "gutter": "24px", "xl": "80px", "margin": "32px",
+            "xs": "4px", "lg": "48px", "base": "8px", "sm": "12px", "md": "24px"
+          },
+          fontFamily: {
+            "label-bold": ["Epilogue"],
+            "body-md": ["Be Vietnam Pro"],
+            "body-lg": ["Be Vietnam Pro"],
+            "headline-md": ["Newsreader"],
+            "headline-lg": ["Newsreader"],
+            "headline-xl": ["Newsreader"]
+          },
+          fontSize: {
+            "label-bold":  ["14px", {"lineHeight": "1.2", "fontWeight": "700"}],
+            "body-md":     ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+            "body-lg":     ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+            "headline-md": ["32px", {"lineHeight": "1.3", "fontWeight": "600"}],
+            "headline-lg": ["48px", {"lineHeight": "1.2", "fontWeight": "700"}],
+            "headline-xl": ["64px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    .grain-texture {
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.05;
+    }
+    .hard-shadow    { box-shadow: 6px 6px 0px 0px rgba(214, 57, 94, 0.45); }
+    .hard-shadow-sm { box-shadow: 3px 3px 0px 0px rgba(214, 57, 94, 0.35); }
+    .organic-blob   { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+    html { scroll-behavior: smooth; scroll-padding-top: 6rem; }
+  </style>
+</head>
+<body class="bg-background text-on-background font-body-md overflow-x-hidden">
+  <div class="fixed inset-0 grain-texture pointer-events-none z-[100]"></div>
+
+  <!-- HEADER -->
+  <header class="fixed top-0 w-full z-50 border-b border-white/10 bg-slate-950/95 backdrop-blur-md">
+    <nav class="flex justify-between items-center px-6 md:px-8 h-20 md:h-24 max-w-7xl mx-auto">
+      <a href="/" class="flex items-center gap-3">
+        <img src="/logo.jpeg" alt="" class="h-10 w-10 rounded-full object-cover ring-2 ring-red-600">
+        <span class="hidden sm:inline text-xl md:text-2xl font-black text-red-500 italic tracking-tight uppercase font-headline-md">The Love Drops</span>
+      </a>
+      <div class="flex items-center gap-5 md:gap-7">
+        <a class="hidden sm:inline text-pink-100/70 font-bold hover:text-red-400 transition-colors italic uppercase tracking-tight font-headline-md text-base" href="/#mailing-list">Mailing List</a>
+        <a class="px-4 md:px-5 py-2 bg-red-600 text-primary-fixed italic font-black uppercase font-headline-md text-sm md:text-base hover:bg-red-700 transition-all active:translate-y-1" href="/#contact">Say Hello</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="relative pt-20 md:pt-24">
+    <section class="relative pt-16 pb-8 px-margin text-center overflow-hidden">
+      <div class="absolute inset-0 bg-gradient-to-b from-red-600/10 to-transparent"></div>
+      <div class="relative z-10 max-w-3xl mx-auto space-y-6">
+        <img src="/logo.jpeg" alt="The Love Drops logo" class="w-36 md:w-44 mx-auto rounded-full drop-shadow-[8px_8px_0px_rgba(214,57,94,0.35)]">
+        <h1 class="font-headline-xl italic text-on-background tracking-tight leading-[0.95] text-[clamp(3rem,9vw,6rem)] [text-shadow:5px_5px_0_#a02141]">Song Sheets</h1>
+        <p class="font-headline-md italic text-on-surface-variant text-2xl md:text-[28px]">Sing them at home, on the road, with your friends. They're not guaranteed to be 100% right, but they're mostly right.</p>
+      </div>
+      <div class="absolute -bottom-12 -left-12 w-64 h-64 bg-red-600/20 organic-blob blur-3xl pointer-events-none"></div>
+    </section>
+    <section class="py-lg px-margin">
+      <div class="max-w-5xl mx-auto">
+        <h2 class="font-headline-lg text-headline-md md:text-headline-lg italic text-on-background text-center mb-8">The Love Drops Songs</h2>
+        <div class="grid md:grid-cols-2 gap-8">
+        <div class="bg-surface-container-high p-8 rounded-2xl border-2 border-primary/20 hard-shadow space-y-5">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-red-500 text-3xl" style="font-variation-settings: 'FILL' 1;">print</span>
+            <h3 class="font-headline-md text-2xl font-semibold text-primary">PDFs for printing</h3>
+          </div>
+          <p class="text-on-surface-variant font-body-md">Download and print. One file per version.</p>
+          <div class="space-y-3">
+            <a href="/songs/The-Love-Drops-Songs-with-chords-06_2025.pdf" download class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
+              <span class="font-headline-md italic text-xl text-on-surface">Songs with chords</span>
+              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">download</span>
+            </a>
+            <a href="/songs/The-Love-Drops-Songs-Lyrics-06_2025.pdf" download class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
+              <span class="font-headline-md italic text-xl text-on-surface">Lyrics only</span>
+              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">download</span>
+            </a>
+          </div>
+        </div>
+        <div class="bg-surface-container-high p-8 rounded-2xl border-2 border-primary/20 hard-shadow space-y-5">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-red-500 text-3xl" style="font-variation-settings: 'FILL' 1;">description</span>
+            <h3 class="font-headline-md text-2xl font-semibold text-primary">Google Docs</h3>
+          </div>
+          <p class="text-on-surface-variant font-body-md">For reading on your phone — or make a copy to do your own edits.</p>
+          <div class="space-y-3">
+            <a href="https://docs.google.com/document/d/1XDuULUbHZ-hN5WzScmwa6iYAUAYyLLfbMqGOAu9Zhcc/edit?usp=sharing" target="_blank" rel="noopener" class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
+              <span class="font-headline-md italic text-xl text-on-surface">Songs with chords</span>
+              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">open_in_new</span>
+            </a>
+            <a href="https://docs.google.com/document/d/1Z4C6W6ymmmjTIKgzark3eLYoM1G_aDOgi_0Ll1AYjXs/edit?usp=sharing" target="_blank" rel="noopener" class="flex items-center justify-between gap-4 p-5 bg-slate-950 border-2 border-outline-variant rounded-lg hover:border-red-600 hover:bg-red-600/10 transition-all group">
+              <span class="font-headline-md italic text-xl text-on-surface">Lyrics only</span>
+              <span class="material-symbols-outlined text-red-500 group-hover:translate-x-1 transition-transform">open_in_new</span>
+            </a>
+          </div>
+        </div>
+        </div>
+      </div>
+    </section>
+    <section class="pt-8 pb-xl px-margin">
+      <p class="max-w-3xl mx-auto text-center font-body-md text-on-surface-variant">Shared under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener" class="text-red-400 underline underline-offset-4">CC BY-NC-SA 4.0</a> — share freely, remix freely, no commercial use, credit The Love Drops. Spotted a mistake or did something fun with a song? <a href="/#contact" class="text-red-400 underline underline-offset-4">Tell us</a>.</p>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="border-t-2 border-red-600 pt-12 pb-8 bg-slate-950">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center px-8 gap-6 text-center md:text-left">
+      <div class="flex flex-col items-center md:items-start gap-2">
+        <a href="/" class="text-xl font-bold text-pink-100 font-headline-md italic uppercase tracking-widest hover:text-red-400">The Love Drops</a>
+        <p class="font-headline-md text-sm tracking-widest uppercase text-pink-100/50 italic">Songs &copy; 2026 The Love Drops &middot; <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener" class="underline underline-offset-4 hover:text-red-400">CC BY-NC-SA 4.0</a></p>
+      </div>
+      <a href="/" class="font-headline-md italic text-pink-100/70 hover:text-red-400">&larr; Back to home</a>
+    </div>
+  </footer>
+</body>
+</html>
