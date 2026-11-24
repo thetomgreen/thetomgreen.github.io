@@ -169,5 +169,21 @@
       <a href="/" class="font-headline-md italic text-pink-100/70 hover:text-red-400">&larr; Back to home</a>
     </div>
   </footer>
+  <script>
+    (() => {
+      const ENDPOINT = "https://srneydgbhpovhhkkvkvi.supabase.co/functions/v1/track-click";
+      function track(e) {
+        if (e.type === "auxclick" && e.button !== 1) return;
+        const a = e.target.closest('a[href$=".pdf"], a[href*="docs.google.com/document/"]');
+        if (!a) return;
+        const set = a.closest("section")?.querySelector("h2")?.textContent.trim() || "";
+        const label = a.querySelector("span")?.textContent.trim() || a.textContent.trim();
+        const body = JSON.stringify({ page: location.pathname, set, label, url: a.href });
+        try { navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "text/plain" })); } catch {}
+      }
+      document.addEventListener("click", track);
+      document.addEventListener("auxclick", track);
+    })();
+  </script>
 </body>
 </html>
